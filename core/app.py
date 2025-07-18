@@ -751,8 +751,8 @@ def dashboard():
     
     for service, keys in key_manager.api_keys.items():
         key_status_data[service] = {
-            'configured': len([k for k in keys if k]) > 0,
-            'count': len([k for k in keys if k])
+            'configured': len([k for k in keys if k and k.strip()]) > 0,
+            'count': len([k for k in keys if k and k.strip()])
         }
         
         
