@@ -34,7 +34,7 @@ from ai.tokenizers.unified_tokenizer import unified_tokenizer
 
 # Import authentication system
 from src.config.auth import auth_config
-from src.middleware.auth import require_auth, check_quota, track_token_usage
+from src.middleware.auth import require_auth, check_quota, track_token_usage, get_client_ip
 from src.services.firebase_logger import event_logger, structured_logger
 from src.services.user_store import user_store
 from src.routes.admin import admin_bp
@@ -66,6 +66,8 @@ class MetricsTracker:
         self.completion_tokens = 0
         # Per-service tracking (dynamically populated as services are used)
         self.service_tokens = {}
+        # IP tracking for active prompters
+        self.active_ips = []  # List of (ip, timestamp) tuples
         self.lock = threading.Lock()
     
     def track_request(self, endpoint: str, response_time: float = None, error: bool = False, tokens: dict = None, service: str = None):
@@ -123,10 +125,27 @@ class MetricsTracker:
                 
                 # Track total tokens (input + output)
                 self.service_tokens[service]['total_tokens'] += total_tokens
-                # Added tokens to service
-            else:
-                # Not tracking tokens
-                pass
+    
+    def track_ip(self, ip: str):
+        """Track IP address for current prompter counting"""
+        with self.lock:
+            current_time = time.time()
+            # Add current IP with timestamp
+            self.active_ips.append((ip, current_time))
+            # Clean up old entries (older than 60 seconds)
+            cutoff_time = current_time - 60
+            self.active_ips = [(ip, timestamp) for ip, timestamp in self.active_ips if timestamp > cutoff_time]
+    
+    def get_current_prompters(self):
+        """Get count of unique IPs in the past 60 seconds"""
+        # Note: This method should be called from within a locked context
+        current_time = time.time()
+        cutoff_time = current_time - 60
+        # Clean up old entries
+        self.active_ips = [(ip, timestamp) for ip, timestamp in self.active_ips if timestamp > cutoff_time]
+        # Return unique IP count
+        unique_ips = set(ip for ip, timestamp in self.active_ips)
+        return len(unique_ips)
     
     def get_uptime(self):
         return time.time() - self.start_time
@@ -148,7 +167,8 @@ class MetricsTracker:
                 'total_tokens': self.total_tokens,
                 'prompt_tokens': self.prompt_tokens,
                 'completion_tokens': self.completion_tokens,
-                'service_tokens': self.service_tokens.copy()
+                'service_tokens': self.service_tokens.copy(),
+                'current_prompters': self.get_current_prompters()
             }
 
 
@@ -435,6 +455,10 @@ def openai_chat_completions():
     """Proxy OpenAI chat completions with rate limit handling"""
     start_time = time.time()
     max_retries = 3
+    
+    # Track IP for current prompter count
+    client_ip = get_client_ip()
+    metrics.track_ip(client_ip)
     
     # Check quota for OpenAI models
     has_quota, quota_error = check_quota('openai')
@@ -814,6 +838,7 @@ def dashboard():
                          total_prompts=metrics_data['request_counts']['chat_completions'],
                          total_tokens=metrics_data['total_tokens'],
                          average_response_time=f"{metrics_data['average_response_time']:.2f}s",
+                         current_prompters=metrics_data['current_prompters'],
                          key_status_data=key_status_data,
                          key_health_data=key_health_data,
                          request_counts=metrics_data['request_counts'],
@@ -885,6 +910,10 @@ def anthropic_messages():
     # Anthropic endpoint called
     start_time = time.time()
     max_retries = 3
+    
+    # Track IP for current prompter count
+    client_ip = get_client_ip()
+    metrics.track_ip(client_ip)
     
     # Check quota for Anthropic models
     has_quota, quota_error = check_quota('anthropic')
