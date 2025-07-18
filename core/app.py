@@ -215,7 +215,9 @@ class APIKeyManager:
             if single_key:
                 openai_keys.extend(self._parse_keys(single_key))
         
-        keys['openai'] = list(set(openai_keys))  # Remove duplicates
+        # Only add services that have actual keys
+        if openai_keys:
+            keys['openai'] = list(set(openai_keys))  # Remove duplicates
         
         # Anthropic keys
         anthropic_keys = []
@@ -227,7 +229,9 @@ class APIKeyManager:
         if single_key:
             anthropic_keys.extend(self._parse_keys(single_key))
         
-        keys['anthropic'] = list(set(anthropic_keys))
+        # Only add anthropic if it has keys
+        if anthropic_keys:
+            keys['anthropic'] = list(set(anthropic_keys))
         
         return keys
     
