@@ -1,0 +1,843 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Model Families Management{% endblock %}
+
+{% block head %}
+<style>
+    .model-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin: 20px 0;
+    }
+    
+    .provider-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 4px solid var(--cat-primary);
+    }
+    
+    .provider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .provider-name {
+        font-size: 1.2em;
+        font-weight: bold;
+        color: var(--cat-primary);
+    }
+    
+    .provider-stats {
+        font-size: 0.9em;
+        color: #666;
+    }
+    
+    .model-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .model-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .model-info {
+        flex: 1;
+    }
+    
+    .model-name {
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .model-description {
+        font-size: 0.8em;
+        color: #666;
+        margin-top: 2px;
+    }
+    
+    .model-cost {
+        font-size: 0.8em;
+        color: #888;
+        margin-top: 2px;
+    }
+    
+    .model-toggle {
+        margin-left: 10px;
+    }
+    
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 20px;
+    }
+    
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 20px;
+    }
+    
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 2px;
+        bottom: 2px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+    
+    input:checked + .toggle-slider {
+        background-color: var(--cat-primary);
+    }
+    
+    input:checked + .toggle-slider:before {
+        transform: translateX(20px);
+    }
+    
+    .stats-overview {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .stat-value {
+        font-size: 1.8em;
+        font-weight: bold;
+        color: var(--cat-primary);
+    }
+    
+    .stat-label {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    .premium-badge {
+        background: linear-gradient(45deg, #ffd700, #ff8c00);
+        color: white;
+        font-size: 0.7em;
+        padding: 2px 6px;
+        border-radius: 10px;
+        margin-left: 5px;
+    }
+    
+    .cat-personality {
+        font-size: 1.2em;
+        margin-right: 5px;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal-content {
+        background-color: white;
+        margin: 5% auto;
+        padding: 20px;
+        border-radius: 10px;
+        width: 80%;
+        max-width: 500px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    
+    .close:hover {
+        color: black;
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .form-group textarea {
+        height: 80px;
+        resize: vertical;
+    }
+    
+    .error {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+    
+    .success {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+    
+    .custom-model-item {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+        background: #f9f9f9;
+    }
+    
+    .custom-model-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .custom-model-name {
+        font-weight: bold;
+        font-size: 1.1em;
+    }
+    
+    .custom-model-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+    }
+    
+    .btn-warning {
+        background-color: #ffc107;
+        color: black;
+    }
+    
+    .btn-danger {
+        background-color: #dc3545;
+        color: white;
+    }
+    
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn-sm {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2>🐾 Model Families Management</h2>
+    <p>Manage which AI models are available for your cats to use!</p>
+    
+    <!-- Stats Overview -->
+    <div class="stats-overview">
+        <div class="stat-card">
+            <div class="stat-value">{{ total_models }}</div>
+            <div class="stat-label">Total Models</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ total_whitelisted }}</div>
+            <div class="stat-label">Whitelisted</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${{ "%.2f"|format(cost_analysis.total_cost) }}</div>
+            <div class="stat-label">Total Cost</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ providers|length }}</div>
+            <div class="stat-label">AI Providers</div>
+        </div>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div style="margin-bottom: 20px;">
+        <button onclick="showAddModelModal()" class="btn btn-primary">➕ Add New Model</button>
+        <button onclick="enableAllModels()" class="btn btn-success">🐱 Enable All Models</button>
+        <button onclick="disableAllModels()" class="btn btn-warning">😾 Disable All Models</button>
+        <a href="{{ url_for('model_families.usage_analytics') }}" class="btn btn-info">📊 Usage Analytics</a>
+        <button onclick="showCustomModels()" class="btn btn-secondary">🔧 Manage Custom Models</button>
+    </div>
+    
+    <!-- Provider Cards -->
+    <div class="model-grid">
+        {% for provider_key, provider_data in providers.items() %}
+        <div class="provider-card">
+            <div class="provider-header">
+                <div class="provider-name">{{ provider_data.name }}</div>
+                <div class="provider-stats">
+                    {{ provider_data.whitelisted_count }}/{{ provider_data.total_count }} enabled
+                </div>
+            </div>
+            
+            <div class="model-list">
+                {% for model in provider_data.all_models %}
+                <div class="model-item">
+                    <div class="model-info">
+                        <div class="model-name">
+                            <span class="cat-personality">{{ model.cat_emoji }}</span>
+                            {{ model.display_name }}
+                            {% if model.is_premium %}
+                            <span class="premium-badge">PREMIUM</span>
+                            {% endif %}
+                        </div>
+                        <div class="model-description">{{ model.description }}</div>
+                        <div class="model-cost">
+                            Input: ${{ "%.3f"|format(model.input_cost) }}/1M | 
+                            Output: ${{ "%.3f"|format(model.output_cost) }}/1M |
+                            Context: {{ "{:,}".format(model.context_length) }}
+                        </div>
+                    </div>
+                    <div class="model-toggle">
+                        <label class="toggle-switch">
+                            <input type="checkbox" 
+                                   {% if model.is_whitelisted %}checked{% endif %}
+                                   onchange="toggleModel('{{ provider_key }}', '{{ model.id }}', this)"
+                                   data-model-id="{{ model.id }}"
+                                   data-provider="{{ provider_key }}">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button onclick="toggleAllProviderModels('{{ provider_key }}', true)" 
+                        class="btn btn-sm btn-success">Enable All</button>
+                <button onclick="toggleAllProviderModels('{{ provider_key }}', false)" 
+                        class="btn btn-sm btn-secondary">Disable All</button>
+                <a href="{{ url_for('model_families.provider_details', provider_name=provider_key) }}" 
+                   class="btn btn-sm btn-info">Details</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Add New Model Modal -->
+<div id="addModelModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close" onclick="hideModal('addModelModal')">&times;</span>
+        <h3>🐱 Add New Model</h3>
+        <form id="addModelForm">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label for="model_id">Model ID *</label>
+                    <input type="text" id="model_id" name="model_id" required 
+                           placeholder="e.g., gpt-4.1-turbo">
+                </div>
+                <div class="form-group">
+                    <label for="provider">Provider *</label>
+                    <select id="provider" name="provider" required>
+                        <option value="">Select provider...</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="google">Google</option>
+                        <option value="mistral">Mistral</option>
+                        <option value="groq">Groq</option>
+                        <option value="cohere">Cohere</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="display_name">Display Name *</label>
+                    <input type="text" id="display_name" name="display_name" required 
+                           placeholder="e.g., GPT-4.1 Turbo">
+                </div>
+                <div class="form-group">
+                    <label for="cat_personality">Cat Personality</label>
+                    <select id="cat_personality" name="cat_personality">
+                        <option value="curious">Curious 🙀</option>
+                        <option value="playful">Playful 😸</option>
+                        <option value="sleepy">Sleepy 😴</option>
+                        <option value="grumpy">Grumpy 😾</option>
+                        <option value="smart">Smart 🤓</option>
+                        <option value="fast">Fast 💨</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="input_cost_per_1m">Input Cost per 1M tokens ($)</label>
+                    <input type="number" id="input_cost_per_1m" name="input_cost_per_1m" 
+                           step="0.001" min="0" placeholder="0.000">
+                </div>
+                <div class="form-group">
+                    <label for="output_cost_per_1m">Output Cost per 1M tokens ($)</label>
+                    <input type="number" id="output_cost_per_1m" name="output_cost_per_1m" 
+                           step="0.001" min="0" placeholder="0.000">
+                </div>
+                <div class="form-group">
+                    <label for="context_length">Context Length</label>
+                    <input type="number" id="context_length" name="context_length" 
+                           min="1" value="4096" placeholder="4096">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="supports_streaming" name="supports_streaming" checked>
+                        Supports Streaming
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="supports_function_calling" name="supports_function_calling">
+                        Supports Function Calling
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="is_premium" name="is_premium">
+                        Premium Model
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="auto_whitelist" name="auto_whitelist" checked>
+                        Auto-enable when added
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="description">Description *</label>
+                <textarea id="description" name="description" required 
+                          placeholder="Brief description of the model capabilities..."></textarea>
+            </div>
+            <div id="addModelErrors" class="error" style="display: none;"></div>
+            <div style="margin-top: 20px;">
+                <button type="submit" class="btn btn-primary">Add Model</button>
+                <button type="button" class="btn btn-secondary" onclick="hideModal('addModelModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Custom Models Management Modal -->
+<div id="customModelsModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 800px;">
+        <span class="close" onclick="hideModal('customModelsModal')">&times;</span>
+        <h3>🔧 Custom Models Management</h3>
+        <div id="customModelsList">
+            <div class="loading">Loading custom models...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleModel(provider, modelId, checkbox) {
+    fetch(`/admin/model-families/api/model/${modelId}/toggle`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message, 'success');
+            updateProviderStats(provider);
+        } else {
+            showNotification(data.error || 'Failed to update model', 'error');
+            checkbox.checked = !checkbox.checked; // Revert checkbox
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+        checkbox.checked = !checkbox.checked; // Revert checkbox
+    });
+}
+
+function toggleAllProviderModels(provider, enable) {
+    const checkboxes = document.querySelectorAll(`input[data-provider="${provider}"]`);
+    const modelIds = [];
+    
+    checkboxes.forEach(checkbox => {
+        if (enable !== checkbox.checked) {
+            checkbox.checked = enable;
+            modelIds.push(checkbox.getAttribute('data-model-id'));
+        }
+    });
+    
+    if (modelIds.length === 0) {
+        showNotification('No changes needed', 'info');
+        return;
+    }
+    
+    // Get all models for this provider
+    const allModels = Array.from(checkboxes).map(cb => cb.getAttribute('data-model-id'));
+    const enabledModels = enable ? allModels : allModels.filter(id => !modelIds.includes(id));
+    
+    updateProviderWhitelist(provider, enabledModels);
+}
+
+function enableAllModels() {
+    const allCheckboxes = document.querySelectorAll('input[data-model-id]');
+    allCheckboxes.forEach(checkbox => {
+        if (!checkbox.checked) {
+            checkbox.checked = true;
+        }
+    });
+    
+    // Update all providers
+    {% for provider_key in providers.keys() %}
+    const {{ provider_key }}Models = Array.from(document.querySelectorAll(`input[data-provider="{{ provider_key }}"]`))
+        .map(cb => cb.getAttribute('data-model-id'));
+    updateProviderWhitelist('{{ provider_key }}', {{ provider_key }}Models);
+    {% endfor %}
+}
+
+function disableAllModels() {
+    if (!confirm('Are you sure you want to disable ALL models? This will prevent any API calls from working!')) {
+        return;
+    }
+    
+    const allCheckboxes = document.querySelectorAll('input[data-model-id]');
+    allCheckboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    // Update all providers
+    {% for provider_key in providers.keys() %}
+    updateProviderWhitelist('{{ provider_key }}', []);
+    {% endfor %}
+}
+
+function updateProviderWhitelist(provider, modelIds) {
+    fetch('/admin/model-families/api/whitelist', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({
+            provider: provider,
+            models: modelIds
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message, 'success');
+            updateProviderStats(provider);
+        } else {
+            showNotification(data.error || 'Failed to update whitelist', 'error');
+            location.reload(); // Reload to reset checkboxes
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+        location.reload(); // Reload to reset checkboxes
+    });
+}
+
+function updateProviderStats(provider) {
+    const enabledCount = document.querySelectorAll(`input[data-provider="${provider}"]:checked`).length;
+    const totalCount = document.querySelectorAll(`input[data-provider="${provider}"]`).length;
+    
+    const statsElement = document.querySelector(`.provider-card:has(input[data-provider="${provider}"]) .provider-stats`);
+    if (statsElement) {
+        statsElement.textContent = `${enabledCount}/${totalCount} enabled`;
+    }
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement('div');
+    notification.className = `flash flash-${type}`;
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.padding = '15px 25px';
+    notification.style.borderRadius = '8px';
+    notification.style.color = 'white';
+    notification.style.fontSize = '16px';
+    notification.style.fontWeight = 'bold';
+    notification.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    
+    if (type === 'success') {
+        notification.style.backgroundColor = '#28a745';
+        notification.innerHTML = '✅ ' + message;
+    } else if (type === 'error') {
+        notification.style.backgroundColor = '#dc3545';
+        notification.innerHTML = '❌ ' + message;
+    } else if (type === 'info') {
+        notification.style.backgroundColor = '#17a2b8';
+        notification.innerHTML = 'ℹ️ ' + message;
+    }
+    
+    document.body.appendChild(notification);
+    
+    // Success messages show longer
+    const duration = type === 'success' ? 5000 : 3000;
+    setTimeout(() => {
+        notification.remove();
+    }, duration);
+}
+
+function showModal(modalId) {
+    document.getElementById(modalId).style.display = 'block';
+}
+
+function hideModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+function showAddModelModal() {
+    document.getElementById('addModelForm').reset();
+    document.getElementById('addModelErrors').style.display = 'none';
+    showModal('addModelModal');
+}
+
+function showCustomModels() {
+    showModal('customModelsModal');
+    loadCustomModels();
+}
+
+document.getElementById('addModelForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {};
+    
+    // Convert form data to object
+    for (let [key, value] of formData.entries()) {
+        if (key.startsWith('supports_') || key.startsWith('is_') || key === 'auto_whitelist') {
+            data[key] = true; // Checkbox is checked
+        } else {
+            data[key] = value;
+        }
+    }
+    
+    // Set unchecked checkboxes to false
+    const checkboxes = ['supports_streaming', 'supports_function_calling', 'is_premium', 'auto_whitelist'];
+    checkboxes.forEach(cb => {
+        if (!data[cb]) {
+            data[cb] = false;
+        }
+    });
+    
+    // Add debug logging
+    console.log('Submitting model data:', data);
+    
+    // Submit the form
+    fetch('/admin/model-families/api/models', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(result => {
+        console.log('Response data:', result);
+        if (result.success) {
+            showNotification(result.message, 'success');
+            hideModal('addModelModal');
+            // Show success message for 2 seconds before refresh
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            const errorDiv = document.getElementById('addModelErrors');
+            if (result.field_errors) {
+                let errorText = 'Validation errors:\n';
+                for (const [field, error] of Object.entries(result.field_errors)) {
+                    errorText += `${field}: ${error}\n`;
+                }
+                errorDiv.textContent = errorText;
+            } else {
+                errorDiv.textContent = result.error || 'Unknown error occurred';
+            }
+            errorDiv.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+        const errorDiv = document.getElementById('addModelErrors');
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+});
+
+function loadCustomModels() {
+    const customModelsList = document.getElementById('customModelsList');
+    customModelsList.innerHTML = '<div class="loading">Loading custom models...</div>';
+    
+    fetch('/admin/model-families/api/models/custom')
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                renderCustomModels(result.models);
+            } else {
+                customModelsList.innerHTML = '<div class="error">Error loading custom models: ' + result.error + '</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            customModelsList.innerHTML = '<div class="error">Network error occurred</div>';
+        });
+}
+
+function renderCustomModels(models) {
+    const customModelsList = document.getElementById('customModelsList');
+    
+    if (models.length === 0) {
+        customModelsList.innerHTML = '<div class="info">No custom models found. Add your first custom model using the "Add New Model" button!</div>';
+        return;
+    }
+    
+    let html = '';
+    models.forEach(model => {
+        html += `
+            <div class="custom-model-item">
+                <div class="custom-model-header">
+                    <div class="custom-model-name">
+                        ${model.cat_emoji} ${model.display_name}
+                        ${model.is_premium ? '<span class="premium-badge">PREMIUM</span>' : ''}
+                    </div>
+                    <div class="custom-model-actions">
+                        <button class="btn btn-sm btn-danger" onclick="deleteCustomModel('${model.model_id}')">Delete</button>
+                    </div>
+                </div>
+                <div style="font-size: 0.9em; color: #666;">
+                    <strong>ID:</strong> ${model.model_id}<br>
+                    <strong>Provider:</strong> ${model.provider.toUpperCase()}<br>
+                    <strong>Description:</strong> ${model.description}<br>
+                    <strong>Costs:</strong> $${model.input_cost_per_1m.toFixed(3)}/1M in, $${model.output_cost_per_1m.toFixed(3)}/1M out<br>
+                    <strong>Context:</strong> ${model.context_length.toLocaleString()} tokens<br>
+                    <strong>Status:</strong> ${model.is_whitelisted ? '<span style="color: green;">Enabled</span>' : '<span style="color: red;">Disabled</span>'}
+                </div>
+            </div>
+        `;
+    });
+    
+    customModelsList.innerHTML = html;
+}
+
+function deleteCustomModel(modelId) {
+    if (!confirm('Are you sure you want to delete this custom model? This action cannot be undone.')) {
+        return;
+    }
+    
+    fetch(`/admin/model-families/api/models/${modelId}`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showNotification(result.message, 'success');
+            loadCustomModels(); // Refresh the list
+            // Also refresh the main page after a short delay
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(result.error || 'Failed to delete model', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+    });
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

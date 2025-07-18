@@ -1,0 +1,502 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <h1>{{ config.brand_emoji }} Admin Dashboard</h1>
+    </div>
+
+    <!-- Authentication Configuration Section -->
+    <div class="config-section">
+        <h2>Authentication Configuration</h2>
+        <div class="config-content">
+            <div class="config-item">
+                <strong>Mode:</strong> {{ auth_config.mode }}
+            </div>
+            <div class="config-item">
+                <strong>User Token Mode:</strong> {{ 'Enabled' if auth_config.mode == 'user_token' else 'Disabled' }}
+            </div>
+            <div class="config-item">
+                <strong>Proxy Key Mode:</strong> {{ 'Enabled' if auth_config.mode == 'proxy_key' else 'Disabled' }}
+            </div>
+            <div class="config-item">
+                <strong>Rate Limiting:</strong> {{ 'Enabled' if auth_config.rate_limit_enabled else 'Disabled' }}
+            </div>
+            <div class="config-item">
+                <strong>Firebase Connected:</strong> {{ 'Yes' if firebase_connected else 'No' }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Grid -->
+    <div class="stats-grid">
+        <div class="stat-box">
+            <div class="stat-label">Total Users</div>
+            <div class="stat-value">{{ stats.total_users }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Active Users</div>
+            <div class="stat-value">{{ stats.active_users }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Disabled Users</div>
+            <div class="stat-value">{{ stats.disabled_users }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Total Requests</div>
+            <div class="stat-value">{{ stats.usage_stats.total_requests or 0 }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Total Tokens</div>
+            <div class="stat-value">{{ stats.usage_stats.total_tokens or 0 }}</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Total Cost</div>
+            <div class="stat-value">${{ "%.2f"|format(stats.usage_stats.total_cost or 0) }}</div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-section">
+        <button class="action-btn primary" onclick="window.location.href='{{ url_for('admin.create_user') }}'">Create User</button>
+        <button class="action-btn secondary" onclick="refreshQuotas()">Refresh All Quotas</button>
+        <button class="action-btn secondary" onclick="refreshUsers()">Refresh Users</button>
+        <button class="action-btn warning" onclick="exportUsers()">Export Users</button>
+    </div>
+
+    <!-- Users Table -->
+    <div class="users-section">
+        <h2>Users</h2>
+        <div class="table-container">
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>API Token</th>
+                        <th>Type</th>
+                        <th>Nickname</th>
+                        <th>Status</th>
+                        <th>IPs</th>
+                        <th>Requests</th>
+                        <th>Token Usage</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if stats.total_users == 0 %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: #666; padding: 20px;">
+                            No users found. <a href="{{ url_for('admin.create_user') }}">Create your first user</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                        {% for user_data in users_data %}
+                        {% set user = user_data.user %}
+                        {% set stats = user_data.stats %}
+                        <tr class="{{ 'disabled' if user.disabled_at else '' }}">
+                            <td>
+                                <code>{{ user.token[:8] }}...</code>
+                            </td>
+                            <td>
+                                <span class="badge badge-{{ user.type.value }}">{{ user.type.value }}</span>
+                            </td>
+                            <td>{{ user.nickname or 'N/A' }}</td>
+                            <td>
+                                {% if user.disabled_at %}
+                                    <span class="status-disabled">Disabled</span>
+                                {% else %}
+                                    <span class="status-active">Active</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ stats.ip_count }}</td>
+                            <td>{{ stats.total_requests }}</td>
+                            <td>{{ stats.total_tokens }}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="{{ url_for('admin.view_user', token=user.token) }}" class="btn btn-sm btn-info">View</a>
+                                    <a href="{{ url_for('admin.edit_user', token=user.token) }}" class="btn btn-sm btn-secondary">Edit</a>
+                                    {% if user.disabled_at %}
+                                        <button class="btn btn-sm btn-success" onclick="enableUser('{{ user.token }}')">Enable</button>
+                                    {% else %}
+                                        <button class="btn btn-sm btn-warning" onclick="disableUser('{{ user.token }}')">Disable</button>
+                                    {% endif %}
+                                    <button class="btn btn-sm btn-danger" onclick="deleteUser('{{ user.token }}')">Delete</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if users_data|length < stats.total_users %}
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #666; padding: 20px;">
+                                <a href="{{ url_for('admin.list_users') }}">View all {{ stats.total_users }} users →</a>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashboard-container {
+        max-width: 1400px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .dashboard-header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .dashboard-header h1 {
+        color: #333;
+        font-size: 2em;
+        margin: 0;
+        font-weight: 500;
+    }
+
+    /* Authentication Configuration Section */
+    .config-section {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 25px;
+        width: 100%;
+        max-width: 1200px;
+    }
+
+    .config-section h2 {
+        color: #495057;
+        font-size: 1.2em;
+        margin: 0 0 15px 0;
+        font-weight: 600;
+    }
+
+    .config-content {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 10px;
+    }
+
+    .config-item {
+        font-size: 0.9em;
+        color: #495057;
+    }
+
+    .config-item strong {
+        color: #212529;
+    }
+
+    /* Statistics Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+        margin-bottom: 25px;
+        border: 2px solid #dc3545;
+        border-radius: 8px;
+        padding: 20px;
+        background: white;
+        width: 100%;
+        max-width: 1200px;
+    }
+
+    .stat-box {
+        text-align: center;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border: 1px solid #e9ecef;
+    }
+
+    .stat-label {
+        font-size: 0.9em;
+        color: #6c757d;
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+
+    .stat-value {
+        font-size: 1.8em;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+
+    /* Action Buttons */
+    .action-section {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 25px;
+        flex-wrap: wrap;
+        width: 100%;
+        max-width: 1200px;
+        justify-content: center;
+    }
+
+    .action-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.9em;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        text-decoration: none;
+        display: inline-block;
+    }
+
+    .action-btn.primary {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .action-btn.primary:hover {
+        background-color: #0056b3;
+    }
+
+    .action-btn.secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .action-btn.secondary:hover {
+        background-color: #545b62;
+    }
+
+    .action-btn.warning {
+        background-color: #ffc107;
+        color: #212529;
+    }
+
+    .action-btn.warning:hover {
+        background-color: #e0a800;
+    }
+
+    /* Users Section */
+    .users-section {
+        background: white;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        overflow: hidden;
+        width: 100%;
+        max-width: 1200px;
+    }
+
+    .users-section h2 {
+        background: #f8f9fa;
+        padding: 15px 20px;
+        margin: 0;
+        font-size: 1.1em;
+        font-weight: 600;
+        color: #495057;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .users-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9em;
+    }
+
+    .users-table th {
+        background: #f8f9fa;
+        padding: 12px 15px;
+        text-align: left;
+        font-weight: 600;
+        color: #495057;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .users-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #f8f9fa;
+        color: #495057;
+    }
+
+    .users-table tr:hover {
+        background-color: #f8f9fa;
+    }
+
+    .users-table a {
+        color: #007bff;
+        text-decoration: none;
+    }
+
+    .users-table a:hover {
+        text-decoration: underline;
+    }
+
+    /* User badges and status */
+    .badge {
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 0.8em;
+        font-weight: bold;
+    }
+    .badge-normal { background-color: #007bff; color: white; }
+    .badge-special { background-color: #28a745; color: white; }
+    .badge-temporary { background-color: #ffc107; color: black; }
+    
+    .status-active { 
+        color: #28a745; 
+        font-weight: bold;
+    }
+    .status-disabled { 
+        color: #dc3545; 
+        font-weight: bold;
+    }
+    
+    /* Action buttons */
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+    
+    .btn {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.9em;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .btn-sm {
+        padding: 4px 8px;
+        font-size: 0.8em;
+    }
+    
+    .btn-info { background-color: #17a2b8; color: white; }
+    .btn-info:hover { background-color: #138496; }
+    .btn-secondary { background-color: #6c757d; color: white; }
+    .btn-secondary:hover { background-color: #545b62; }
+    .btn-warning { background-color: #ffc107; color: black; }
+    .btn-warning:hover { background-color: #e0a800; }
+    .btn-danger { background-color: #dc3545; color: white; }
+    .btn-danger:hover { background-color: #c82333; }
+    .btn-success { background-color: #28a745; color: white; }
+    .btn-success:hover { background-color: #218838; }
+    
+    /* Disabled row styling */
+    .users-table tr.disabled {
+        opacity: 0.6;
+        background-color: #f8f9fa;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .dashboard-container {
+            padding: 15px;
+        }
+        
+        .config-content {
+            grid-template-columns: 1fr;
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .action-section {
+            flex-direction: column;
+        }
+        
+        .action-btn {
+            width: 100%;
+            text-align: center;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+function refreshQuotas() {
+    alert('Refresh All Quotas functionality - to be implemented');
+}
+
+function refreshUsers() {
+    window.location.reload();
+}
+
+function exportUsers() {
+    alert('Export Users functionality - to be implemented');
+}
+
+// User management functions
+function enableUser(token) {
+    if (confirm('Are you sure you want to enable this user?')) {
+        $.post(`/admin/users/${token}/enable`, {})
+        .done(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .fail(function() {
+            alert('Error: Failed to enable user');
+        });
+    }
+}
+
+function disableUser(token) {
+    const reason = prompt('Reason for disabling user:');
+    if (reason) {
+        $.post(`/admin/users/${token}/disable`, {
+            reason: reason
+        })
+        .done(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .fail(function() {
+            alert('Error: Failed to disable user');
+        });
+    }
+}
+
+function deleteUser(token) {
+    if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+        $.ajax({
+            url: `/admin/users/${token}`,
+            type: 'DELETE'
+        })
+        .done(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .fail(function() {
+            alert('Error: Failed to delete user');
+        });
+    }
+}
+</script>
+{% endblock %}

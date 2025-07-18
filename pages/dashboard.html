@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{config.brand_emoji}} {{config.brand_name}} - {{config.brand_description}}</title>
+    <meta http-equiv="refresh" content="{{config.refresh_interval}}">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
+        
+        body { 
+            font-family: 'Quicksand', sans-serif; 
+            margin: 0; 
+            padding: 20px;
+            background: linear-gradient(135deg, #ffd3e1 0%, #c8e6c9 25%, #bbdefb 50%, #f8bbd9 75%, #ffcccb 100%);
+            background-size: 400% 400%;
+            min-height: 100vh;
+            animation: pastelGradient 15s ease-in-out infinite;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        @keyframes pastelGradient {
+            0% { background-position: 0% 50%; }
+            25% { background-position: 100% 50%; }
+            50% { background-position: 50% 100%; }
+            75% { background-position: 50% 0%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            position: relative;
+        }
+        
+        .header { 
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            color: #333;
+            padding: 30px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(255, 182, 193, 0.1) 10px,
+                rgba(255, 182, 193, 0.1) 20px
+            );
+            animation: rainbow 3s linear infinite;
+            z-index: -1;
+        }
+        
+        @keyframes rainbow {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(0deg); }
+            100% { transform: translateX(-100%) translateY(-100%) rotate(360deg); }
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin: 0;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #f9ca24);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: bounce 2s ease-in-out infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+        }
+        
+        .card { 
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #f9ca24);
+            border-radius: 22px;
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+        
+        .card:hover::before {
+            opacity: 1;
+        }
+        
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); 
+            gap: 25px; 
+        }
+        
+        .metric { 
+            text-align: center; 
+            padding: 20px; 
+            border-radius: 15px; 
+            margin: 10px 0;
+            transition: transform 0.2s ease;
+        }
+        
+        .metric:hover {
+            transform: scale(1.05);
+        }
+        
+        .metric-value { 
+            font-size: 2.5em; 
+            font-weight: 700; 
+            color: #333; 
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .metric-label { 
+            color: #666; 
+            margin-top: 10px; 
+            font-weight: 500;
+            font-size: 1.1em;
+        }
+        
+        .status-good { 
+            background: linear-gradient(135deg, #a8e6cf 0%, #dcedc8 100%); 
+            border-left: 6px solid #4caf50; 
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+        
+        .status-warning { 
+            background: linear-gradient(135deg, #ffd54f 0%, #ffecb3 100%); 
+            border-left: 6px solid #ff9800; 
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
+        }
+        
+        .status-error { 
+            background: linear-gradient(135deg, #ffcdd2 0%, #f8bbd9 100%); 
+            border-left: 6px solid #f44336; 
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3);
+        }
+        
+        .table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .table th, .table td { 
+            padding: 15px; 
+            text-align: center; 
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 500;
+        }
+        
+        .table th { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .table tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .table tr:hover {
+            background-color: rgba(255, 182, 193, 0.2);
+            transform: scale(1.02);
+            transition: all 0.2s ease;
+        }
+        
+        .refresh { 
+            color: rgba(255, 255, 255, 0.8); 
+            font-size: 14px; 
+            margin-top: 30px; 
+            text-align: center; 
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 15px;
+            backdrop-filter: blur(5px);
+        }
+        
+        .endpoint-card {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 5px solid #e17055;
+            transition: transform 0.2s ease;
+        }
+        
+        .endpoint-card:hover {
+            transform: translateX(5px);
+        }
+        
+        .endpoint-url {
+            font-family: 'Courier New', monospace;
+            background: rgba(255, 255, 255, 0.3);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #2d3436;
+            margin: 5px 0;
+            word-break: break-all;
+            overflow-wrap: break-word;
+            max-width: 100%;
+            font-size: 0.9em;
+        }
+        
+        .cute-divider {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 1.5em;
+            color: #ff6b6b;
+        }
+        
+        .cat-emoji {
+            display: inline-block;
+            animation: wiggle 2s ease-in-out infinite;
+            margin: 0 5px;
+        }
+        
+        @keyframes wiggle {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-3deg); }
+            75% { transform: rotate(3deg); }
+        }
+        
+        .paw-print {
+            position: absolute;
+            color: rgba(255, 182, 193, 0.3);
+            font-size: 1.2em;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        /* Cat paw animations */
+        
+        #catpaws {
+            position: fixed;
+            top: -50px;
+            width: 100%;
+            text-align: right;
+            z-index: 10000;
+            pointer-events: none;
+        }
+        
+        #catpaws i {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            font-size: 2em;
+            z-index: 10000;
+            -webkit-animation: falling 5s 0s infinite;
+            animation: falling 5s 0s infinite;
+        }
+        
+        #catpaws i:nth-of-type(2n) { 
+            -webkit-animation: falling2 5s 0s infinite;
+            animation: falling2 5s 0s infinite;
+        }
+        
+        #catpaws i:nth-of-type(3n) { 
+            -webkit-animation: falling3 5s 0s infinite;
+            animation: falling3 5s 0s infinite;
+        }
+        
+        #catpaws i:nth-of-type(n)    { height: 23px; width: 30px; font-size: 1.5em; }
+        #catpaws i:nth-of-type(2n+1) { height: 18px; width: 24px; font-size: 1.2em; }
+        #catpaws i:nth-of-type(3n+2) { height: 28px; width: 35px; font-size: 1.8em; }
+        
+        #catpaws i:nth-of-type(n)   { -webkit-animation-delay: 1.9s; animation-delay: 1.9s; }
+        #catpaws i:nth-of-type(2n)  { -webkit-animation-delay: 3.9s; animation-delay: 3.9s; }
+        #catpaws i:nth-of-type(3n)  { -webkit-animation-delay: 2.3s; animation-delay: 2.3s; }
+        #catpaws i:nth-of-type(4n)  { -webkit-animation-delay: 4.4s; animation-delay: 4.4s; }
+        #catpaws i:nth-of-type(5n)  { -webkit-animation-delay: 5s; animation-delay: 5s; }
+        #catpaws i:nth-of-type(6n)  { -webkit-animation-delay: 3.5s; animation-delay: 3.5s; }
+        #catpaws i:nth-of-type(7n)  { -webkit-animation-delay: 2.8s; animation-delay: 2.8s; }
+        #catpaws i:nth-of-type(8n)  { -webkit-animation-delay: 1.5s; animation-delay: 1.5s; }
+        #catpaws i:nth-of-type(9n)  { -webkit-animation-delay: 3.3s; animation-delay: 3.3s; }
+        #catpaws i:nth-of-type(10n) { -webkit-animation-delay: 2.5s; animation-delay: 2.5s; }
+        #catpaws i:nth-of-type(11n) { -webkit-animation-delay: 1.2s; animation-delay: 1.2s; }
+        #catpaws i:nth-of-type(12n) { -webkit-animation-delay: 4.1s; animation-delay: 4.1s; }
+        #catpaws i:nth-of-type(13n) { -webkit-animation-delay: 1s; animation-delay: 1s; }
+        #catpaws i:nth-of-type(14n) { -webkit-animation-delay: 4.7s; animation-delay: 4.7s; }
+        #catpaws i:nth-of-type(15n) { -webkit-animation-delay: 3s; animation-delay: 3s; }
+        
+        #catpaws i:nth-of-type(n)    { opacity: 0.7; color: rgba(255, 182, 193, 0.8); }
+        #catpaws i:nth-of-type(3n+1) { opacity: 0.5; color: rgba(255, 192, 203, 0.9); }
+        #catpaws i:nth-of-type(3n+2) { opacity: 0.3; color: rgba(255, 160, 180, 0.7); }
+        
+        #catpaws i:nth-of-type(n) { transform: rotate(180deg); }
+        #catpaws i:nth-of-type(n) { -webkit-animation-timing-function: ease-in-out; animation-timing-function: ease-in-out; }
+        
+        @-webkit-keyframes falling {
+            0% {
+                -webkit-transform: translate3d(300px, 0, 0) rotate(0deg);
+            }
+            100% {
+                -webkit-transform: translate3d(-350px, 700px, 0) rotate(90deg);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes falling {
+            0% {
+                transform: translate3d(300px, 0, 0) rotate(0deg);
+            }
+            100% {
+                transform: translate3d(-350px, 700px, 0) rotate(90deg);
+                opacity: 0;
+            }
+        }
+        
+        @-webkit-keyframes falling3 {
+            0% {
+                -webkit-transform: translate3d(0, 0, 0) rotate(-20deg);
+            }
+            100% {
+                -webkit-transform: translate3d(-230px, 640px, 0) rotate(-70deg);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes falling3 {
+            0% {
+                transform: translate3d(0, 0, 0) rotate(-20deg);
+            }
+            100% {
+                transform: translate3d(-230px, 640px, 0) rotate(-70deg);
+                opacity: 0;
+            }
+        }
+        
+        @-webkit-keyframes falling2 {
+            0% {
+                -webkit-transform: translate3d(0, 0, 0) rotate(90deg);
+            }
+            100% {
+                -webkit-transform: translate3d(-400px, 680px, 0) rotate(0deg);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes falling2 {
+            0% {
+                transform: translate3d(0, 0, 0) rotate(90deg);
+            }
+            100% {
+                transform: translate3d(-400px, 680px, 0) rotate(0deg);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="catpaws">
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+    </div>
+    
+    <div class="paw-print" style="top: 10%; left: 5%;">🐾</div>
+    <div class="paw-print" style="top: 20%; right: 10%; animation-delay: 1s;">🐾</div>
+    <div class="paw-print" style="top: 60%; left: 8%; animation-delay: 2s;">🐾</div>
+    <div class="paw-print" style="top: 80%; right: 5%; animation-delay: 0.5s;">🐾</div>
+    
+    
+    <div class="container">
+        <div class="header">
+            <h1>{{config.title}} 😸</h1>
+            <p>{{config.subtitle}} <span class="cat-emoji">🐾</span></p>
+        </div>
+        
+        <div class="grid">
+            <!-- Usage Instructions Card - First -->
+            <div class="card">
+                <h3>🐱 Usage Instructions <span class="cat-emoji">📋</span></h3>
+                <div class="cute-divider">🐾 ～ ～ ～ 🐾</div>
+                
+                <div class="endpoint-card">
+                    <h4>🤖 For OpenAI</h4>
+                    <div class="endpoint-url">{{base_url}}/openai/v1</div>
+                    <p>Use this as your base URL in OpenAI clients</p>
+                </div>
+                
+                <div class="endpoint-card">
+                    <h4>🧠 For Anthropic</h4>
+                    <div class="endpoint-url">{{base_url}}/anthropic/v1</div>
+                    <p>Use this as your base URL in Anthropic clients</p>
+                </div>
+                
+                <div style="background: rgba(255, 255, 255, 0.3); padding: 15px; border-radius: 10px; margin-top: 15px;">
+                    <h4>🔑 API Key Configuration:</h4>
+                    <p><strong>Authentication Mode:</strong> {{ config.auth_display }}</p>
+                    {% if config.auth_mode == 'proxy_key' %}
+                    <p><strong>Usage:</strong> Use the configured proxy password as your API key</p>
+                    {% elif config.auth_mode == 'user_token' %}
+                    <p><strong>Usage:</strong> Each user has a unique token (contact admin for your token)</p>
+                    {% elif config.auth_mode == 'none' %}
+                    <p><strong>Usage:</strong> No authentication required - use any value</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card">
+                <h3>📊 System Metrics <span class="cat-emoji">😺</span></h3>
+                <div class="metric status-good">
+                    <div class="metric-value">{{uptime_display}}</div>
+                    <div class="metric-label">Uptime <span class="cat-emoji">⏰</span></div>
+                </div>
+                <div class="metric status-good">
+                    <div class="metric-value">{{total_prompts}}</div>
+                    <div class="metric-label">Total Prompts <span class="cat-emoji">📈</span></div>
+                </div>
+                <div class="metric status-good">
+                    <div class="metric-value">{{total_tokens}}</div>
+                    <div class="metric-label">Total Tokens <span class="cat-emoji">🔢</span></div>
+                </div>
+                <div class="metric status-good">
+                    <div class="metric-value">{{average_response_time}}</div>
+                    <div class="metric-label">Avg Response Time <span class="cat-emoji">⚡</span></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>🔑 Key Status <span class="cat-emoji">🗝️</span></h3>
+                {% for service, health in key_health_data.items() %}
+                <div style="margin-bottom: 20px;">
+                    <h4>{{service.title()}} - {{health.avg_response_time|default('0.00')}}s</h4>
+                    <div style="display: flex; gap: 15px; margin-bottom: 10px; flex-wrap: wrap;">
+                        <span class="status-good" style="padding: 5px 10px; border-radius: 8px; font-size: 0.9em;">
+                            🟢 Healthy: {{health.healthy}}
+                        </span>
+                        <span class="status-warning" style="padding: 5px 10px; border-radius: 8px; font-size: 0.9em;">
+                            🟡 Rate Limited: {{health.rate_limited}}
+                        </span>
+                        <span class="status-error" style="padding: 5px 10px; border-radius: 8px; font-size: 0.9em;">
+                            🔴 Invalid: {{health.invalid_key}}
+                        </span>
+                        <span class="status-error" style="padding: 5px 10px; border-radius: 8px; font-size: 0.9em;">
+                            💸 Quota Exceeded: {{health.quota_exceeded}}
+                        </span>
+                        <span style="padding: 5px 10px; border-radius: 8px; font-size: 0.9em; background: rgba(200,200,200,0.3);">
+                            ⚪ Unknown: {{health.unknown}}
+                        </span>
+                    </div>
+                    
+                    <!-- Token counters for each service -->
+                    <div style="display: flex; gap: 15px; margin-bottom: 10px; flex-wrap: wrap;">
+                        <div class="metric status-good" style="padding: 10px; margin: 0; display: inline-block; min-width: 80px;">
+                            <div class="metric-value" style="font-size: 1.2em;">{{health.successful_requests|default(0)}}</div>
+                            <div class="metric-label" style="font-size: 0.8em;">Prompts</div>
+                        </div>
+                        <div class="metric status-good" style="padding: 10px; margin: 0; display: inline-block; min-width: 80px;">
+                            <div class="metric-value" style="font-size: 1.2em;">{{health.total_tokens|default(0)}}</div>
+                            <div class="metric-label" style="font-size: 0.8em;">Tokens</div>
+                        </div>
+                    </div>
+                    
+                    {% if not health.key_details %}
+                    <p style="color: gray; font-style: italic;">No keys configured for this service</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="card">
+                <h3>📈 Request Statistics <span class="cat-emoji">📊</span></h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Endpoint</th>
+                            <th>Requests</th>
+                            <th>Errors</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Chat Completions</td>
+                            <td>{{request_counts.chat_completions}}</td>
+                            <td>{{error_counts.chat_completions}}</td>
+                        </tr>
+                        <tr>
+                            <td>Models</td>
+                            <td>{{request_counts.models}}</td>
+                            <td>{{error_counts.models}}</td>
+                        </tr>
+                        <tr>
+                            <td>Health Check</td>
+                            <td>{{request_counts.health}}</td>
+                            <td>0</td>
+                        </tr>
+                        <tr>
+                            <td>Key Status</td>
+                            <td>{{request_counts.key_status}}</td>
+                            <td>0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="card">
+                <h3>⏱️ Recent Activity <span class="cat-emoji">🕐</span></h3>
+                <div class="metric">
+                    <div class="metric-label">Last Request <span class="cat-emoji">📝</span></div>
+                    <div class="metric-value" style="font-size: 1.2em;">
+                        {{last_request or 'No requests yet'}}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Admin endpoints moved to bottom, less prominent -->
+            <div class="card" style="opacity: 0.8;">
+                <h3>🔧 Admin Endpoints <span class="cat-emoji">⚙️</span></h3>
+                <div class="cute-divider">🐾 ～ ～ ～ 🐾</div>
+                
+                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
+                    <h4>💊 Health Check</h4>
+                    <div class="endpoint-url">{{base_url}}/health</div>
+                    <p>Simple health check endpoint to verify proxy status</p>
+                </div>
+                
+                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
+                    <h4>🔑 Key Status</h4>
+                    <div class="endpoint-url">{{base_url}}/api/keys/status</div>
+                    <p>Check which API keys are configured and available</p>
+                </div>
+                
+                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
+                    <h4>🏥 Key Health</h4>
+                    <div class="endpoint-url">{{base_url}}/api/keys/health</div>
+                    <p>Get detailed health status for all API keys with timestamps</p>
+                </div>
+                
+                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
+                    <h4>📊 Metrics</h4>
+                    <div class="endpoint-url">{{base_url}}/api/metrics</div>
+                    <p>Get detailed JSON metrics about proxy performance</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="refresh">
+            <span class="cat-emoji">😸</span> Dashboard refreshes every {{config.refresh_interval}} seconds <span class="cat-emoji">🔄</span>
+            <br>Made with <span class="cat-emoji">❤️</span> and lots of <span class="cat-emoji">☕</span> for your AI needs!
+        </div>
+    </div>
+</body>
+</html>

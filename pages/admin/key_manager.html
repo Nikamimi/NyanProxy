@@ -1,0 +1,357 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Key Manager{% endblock %}
+
+{% block content %}
+<div class="key-manager">
+    <h1>API Key Management</h1>
+    
+    <div class="key-tabs">
+        <button class="tab-button active" onclick="showTab('openai')">OpenAI</button>
+        <button class="tab-button" onclick="showTab('anthropic')">Anthropic</button>
+        <button class="tab-button" onclick="showTab('google')">Google</button>
+        <button class="tab-button" onclick="showTab('mistral')">Mistral</button>
+    </div>
+    
+    <div class="tab-content">
+        <div id="openai-tab" class="tab-panel active">
+            <h2>OpenAI API Keys</h2>
+            <div class="key-section">
+                <div class="add-key">
+                    <h3>Add New OpenAI Key</h3>
+                    <form id="add-openai-key" onsubmit="addKey(event, 'openai')">
+                        <input type="text" id="openai-key" placeholder="sk-..." required>
+                        <button type="submit">Add Key</button>
+                    </form>
+                </div>
+                
+                <div class="keys-list" id="openai-keys">
+                    <!-- Keys will be loaded here -->
+                </div>
+            </div>
+        </div>
+        
+        <div id="anthropic-tab" class="tab-panel">
+            <h2>Anthropic API Keys</h2>
+            <div class="key-section">
+                <div class="add-key">
+                    <h3>Add New Anthropic Key</h3>
+                    <form id="add-anthropic-key" onsubmit="addKey(event, 'anthropic')">
+                        <input type="text" id="anthropic-key" placeholder="sk-ant-..." required>
+                        <button type="submit">Add Key</button>
+                    </form>
+                </div>
+                
+                <div class="keys-list" id="anthropic-keys">
+                    <!-- Keys will be loaded here -->
+                </div>
+            </div>
+        </div>
+        
+        <div id="google-tab" class="tab-panel">
+            <h2>Google AI API Keys</h2>
+            <div class="key-section">
+                <div class="add-key">
+                    <h3>Add New Google AI Key</h3>
+                    <form id="add-google-key" onsubmit="addKey(event, 'google')">
+                        <input type="text" id="google-key" placeholder="AI..." required>
+                        <button type="submit">Add Key</button>
+                    </form>
+                </div>
+                
+                <div class="keys-list" id="google-keys">
+                    <!-- Keys will be loaded here -->
+                </div>
+            </div>
+        </div>
+        
+        <div id="mistral-tab" class="tab-panel">
+            <h2>Mistral API Keys</h2>
+            <div class="key-section">
+                <div class="add-key">
+                    <h3>Add New Mistral Key</h3>
+                    <form id="add-mistral-key" onsubmit="addKey(event, 'mistral')">
+                        <input type="text" id="mistral-key" placeholder="..." required>
+                        <button type="submit">Add Key</button>
+                    </form>
+                </div>
+                
+                <div class="keys-list" id="mistral-keys">
+                    <!-- Keys will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="key-stats">
+        <h2>Key Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Keys</h3>
+                <p class="stat-number" id="total-keys">-</p>
+            </div>
+            <div class="stat-card">
+                <h3>Active Keys</h3>
+                <p class="stat-number" id="active-keys">-</p>
+            </div>
+            <div class="stat-card">
+                <h3>Failed Keys</h3>
+                <p class="stat-number" id="failed-keys">-</p>
+            </div>
+            <div class="stat-card">
+                <h3>Total Requests</h3>
+                <p class="stat-number" id="total-requests">-</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .key-tabs {
+        display: flex;
+        border-bottom: 1px solid #ddd;
+        margin-bottom: 20px;
+    }
+    .tab-button {
+        padding: 10px 20px;
+        border: none;
+        background: none;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+    }
+    .tab-button.active {
+        border-bottom-color: #007bff;
+        color: #007bff;
+    }
+    .tab-panel {
+        display: none;
+    }
+    .tab-panel.active {
+        display: block;
+    }
+    .key-section {
+        margin-bottom: 30px;
+    }
+    .add-key {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .add-key h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+    }
+    .add-key form {
+        display: flex;
+        gap: 10px;
+    }
+    .add-key input {
+        flex: 1;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+    .add-key button {
+        padding: 8px 16px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .key-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+    .key-info {
+        flex: 1;
+    }
+    .key-hash {
+        font-family: monospace;
+        font-size: 0.9em;
+        color: #666;
+    }
+    .key-status {
+        margin-top: 5px;
+    }
+    .status-active { color: #28a745; }
+    .status-failed { color: #dc3545; }
+    .status-unknown { color: #6c757d; }
+    .key-actions {
+        display: flex;
+        gap: 10px;
+    }
+    .btn-test {
+        background-color: #17a2b8;
+        color: white;
+    }
+    .btn-remove {
+        background-color: #dc3545;
+        color: white;
+    }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    .stat-card {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 5px;
+        text-align: center;
+        border: 1px solid #dee2e6;
+    }
+    .stat-card h3 {
+        margin: 0 0 10px 0;
+        color: #495057;
+    }
+    .stat-number {
+        font-size: 2em;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0;
+    }
+</style>
+
+<script>
+function showTab(service) {
+    // Hide all tab panels
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+    
+    // Remove active class from all buttons
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+    
+    // Show selected tab panel
+    document.getElementById(service + '-tab').classList.add('active');
+    
+    // Add active class to clicked button
+    event.target.classList.add('active');
+    
+    // Load keys for this service
+    loadKeys(service);
+}
+
+function loadKeys(service) {
+    // This would load keys from the backend
+    // For now, show placeholder
+    const container = document.getElementById(service + '-keys');
+    container.innerHTML = '<p><em>Key management functionality to be implemented</em></p>';
+}
+
+function addKey(event, service) {
+    event.preventDefault();
+    const input = document.getElementById(service + '-key');
+    const key = input.value.trim();
+    
+    if (!key) {
+        alert('Please enter a valid API key');
+        return;
+    }
+    
+    // Add key via API
+    fetch('/admin/keys', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({
+            service: service,
+            key: key
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            input.value = '';
+            loadKeys(service);
+            updateStats();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error adding key:', error);
+        alert('Error adding key');
+    });
+}
+
+function removeKey(service, keyHash) {
+    if (confirm('Are you sure you want to remove this API key?')) {
+        fetch(`/admin/keys/${service}/${keyHash}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadKeys(service);
+                updateStats();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error removing key:', error);
+            alert('Error removing key');
+        });
+    }
+}
+
+function testKey(service, keyHash) {
+    fetch(`/admin/keys/${service}/${keyHash}/test`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Key test successful');
+        } else {
+            alert('Key test failed: ' + data.error);
+        }
+        loadKeys(service);
+    })
+    .catch(error => {
+        console.error('Error testing key:', error);
+        alert('Error testing key');
+    });
+}
+
+function updateStats() {
+    // Update key statistics
+    fetch('/admin/keys/stats')
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('total-keys').textContent = data.total || 0;
+        document.getElementById('active-keys').textContent = data.active || 0;
+        document.getElementById('failed-keys').textContent = data.failed || 0;
+        document.getElementById('total-requests').textContent = data.requests || 0;
+    })
+    .catch(error => {
+        console.error('Error updating stats:', error);
+    });
+}
+
+// Load initial data
+document.addEventListener('DOMContentLoaded', function() {
+    loadKeys('openai');
+    updateStats();
+});
+</script>
+{% endblock %}

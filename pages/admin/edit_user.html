@@ -1,0 +1,202 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Edit User{% endblock %}
+
+{% block content %}
+<div class="edit-user">
+    <h1>Edit User</h1>
+    
+    <div class="user-summary">
+        <p><strong>Token:</strong> <code>{{ user.token }}</code></p>
+        <p><strong>Created:</strong> {{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        <p><strong>Status:</strong> 
+            {% if user.disabled_at %}
+                <span class="status-disabled">Disabled</span>
+            {% else %}
+                <span class="status-active">Active</span>
+            {% endif %}
+        </p>
+    </div>
+    
+    <form method="POST" action="{{ url_for('admin.edit_user', token=user.token) }}" onsubmit="return validateUserForm()">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        
+        <div class="form-group">
+            <label for="nickname">Nickname:</label>
+            <input type="text" id="nickname" name="nickname" value="{{ user.nickname or '' }}" required>
+            <small>A human-readable identifier for this user</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="type">User Type:</label>
+            <select id="type" name="type">
+                <option value="normal" {{ 'selected' if user.type == 'normal' }}>Normal</option>
+                <option value="special" {{ 'selected' if user.type == 'special' }}>Special</option>
+                <option value="temporary" {{ 'selected' if user.type == 'temporary' }}>Temporary</option>
+            </select>
+            <small>
+                <strong>Normal:</strong> Standard user with default quotas<br>
+                <strong>Special:</strong> Premium user with higher limits and no rate limiting<br>
+                <strong>Temporary:</strong> Time-limited user (expires after 24 hours)
+            </small>
+        </div>
+        
+        <div class="form-group">
+            <label for="openai_limit">OpenAI Token Limit:</label>
+            <input type="number" id="openai_limit" name="openai_limit" min="0" 
+                   value="{{ user.token_limits.get('openai', '') }}" placeholder="Leave empty for unlimited">
+            <small>Maximum tokens this user can consume for OpenAI models</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="anthropic_limit">Anthropic Token Limit:</label>
+            <input type="number" id="anthropic_limit" name="anthropic_limit" min="0" 
+                   value="{{ user.token_limits.get('anthropic', '') }}" placeholder="Leave empty for unlimited">
+            <small>Maximum tokens this user can consume for Anthropic models</small>
+        </div>
+        
+        <div class="current-usage">
+            <h3>Current Usage</h3>
+            <table class="usage-table">
+                <thead>
+                    <tr>
+                        <th>Model Family</th>
+                        <th>Input Tokens</th>
+                        <th>Output Tokens</th>
+                        <th>Total Tokens</th>
+                        <th>Current Limit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for family, count in user.token_counts.items() %}
+                    <tr>
+                        <td>{{ family }}</td>
+                        <td>{{ count.input }}</td>
+                        <td>{{ count.output }}</td>
+                        <td>{{ count.total }}</td>
+                        <td>{{ user.token_limits.get(family, 'Unlimited') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="{{ url_for('admin.view_user', token=user.token) }}" class="btn btn-secondary">Cancel</a>
+            <button type="button" class="btn btn-warning" onclick="resetUserUsage()">Reset Usage</button>
+        </div>
+    </form>
+</div>
+
+<style>
+    .edit-user {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    .user-summary {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 30px;
+    }
+    .user-summary p {
+        margin: 5px 0;
+    }
+    .form-group {
+        margin-bottom: 20px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        font-size: 14px;
+    }
+    .form-group small {
+        display: block;
+        margin-top: 5px;
+        color: #666;
+        font-size: 12px;
+    }
+    .current-usage {
+        margin: 30px 0;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+    .current-usage h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+    }
+    .usage-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .usage-table th,
+    .usage-table td {
+        padding: 8px;
+        border: 1px solid #dee2e6;
+        text-align: left;
+    }
+    .usage-table th {
+        background-color: #e9ecef;
+    }
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 30px;
+    }
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+    }
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    .btn-warning {
+        background-color: #ffc107;
+        color: black;
+    }
+    .btn:hover {
+        opacity: 0.9;
+    }
+    .status-active { color: #28a745; }
+    .status-disabled { color: #dc3545; }
+</style>
+
+<script>
+function resetUserUsage() {
+    if (confirm('Are you sure you want to reset this user\'s token usage? This action cannot be undone.')) {
+        $.post(`/admin/users/{{ user.token }}/reset-usage`, {})
+        .done(function(data) {
+            if (data.success) {
+                alert('User usage reset successfully');
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .fail(function() {
+            alert('Error: Failed to reset user usage');
+        });
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin Dashboard{% endblock %} - {{ config.brand_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/nyancat.css') }}">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
+        
+        /* Beautiful animated background from main dashboard */
+        body { 
+            font-family: 'Quicksand', sans-serif; 
+            margin: 0; 
+            padding: 20px;
+            background: linear-gradient(135deg, #ffd3e1 0%, #c8e6c9 25%, #bbdefb 50%, #f8bbd9 75%, #ffcccb 100%);
+            background-size: 400% 400%;
+            min-height: 100vh;
+            animation: pastelGradient 15s ease-in-out infinite;
+            position: relative;
+            overflow-x: hidden;
+            max-width: none !important;
+            width: 100% !important;
+        }
+        
+        @keyframes pastelGradient {
+            0% { background-position: 0% 50%; }
+            25% { background-position: 100% 50%; }
+            50% { background-position: 50% 100%; }
+            75% { background-position: 50% 0%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        /* Container to center everything */
+        .admin-container {
+            max-width: 1600px;
+            width: 95%;
+            margin: 0 auto;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            justify-content: flex-start;
+            padding: 0 20px;
+        }
+        
+        /* Beautiful header with glassmorphism */
+        .nyan-header {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(10px) !important;
+            color: #333 !important;
+            padding: 30px !important;
+            border-radius: 20px !important;
+            margin-bottom: 30px !important;
+            text-align: center !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            position: relative !important;
+            overflow: visible !important;
+            text-shadow: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        
+        .nyan-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(255, 182, 193, 0.1) 10px,
+                rgba(255, 182, 193, 0.1) 20px
+            );
+            animation: rainbow 3s linear infinite;
+            z-index: -1;
+        }
+        
+        @keyframes rainbow {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(0deg); }
+            100% { transform: translateX(-100%) translateY(-100%) rotate(360deg); }
+        }
+        
+        .nyan-header h1 {
+            font-size: 2em !important;
+            margin: 0 0 20px 0 !important;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #f9ca24) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            background-clip: text !important;
+            animation: bounce 2s ease-in-out infinite !important;
+            font-weight: 600 !important;
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+        }
+        
+        .nyan-header ul {
+            list-style: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 10px !important;
+            justify-content: center !important;
+            align-items: center !important;
+            width: 100% !important;
+        }
+        
+        .nyan-header li {
+            margin: 0 !important;
+            flex-shrink: 0 !important;
+        }
+        
+        .nyan-header a {
+            color: #333 !important;
+            text-decoration: none !important;
+            padding: 10px 16px !important;
+            border-radius: 25px !important;
+            font-size: 0.9em !important;
+            font-weight: 500 !important;
+            transition: all 0.3s ease !important;
+            background: rgba(255, 255, 255, 0.7) !important;
+            border: 1px solid rgba(255, 255, 255, 0.5) !important;
+            display: inline-block !important;
+            white-space: nowrap !important;
+            min-width: max-content !important;
+        }
+        
+        .nyan-header a:hover {
+            background: rgba(255, 255, 255, 0.95) !important;
+            transform: translateY(-3px) !important;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15) !important;
+            color: #007bff !important;
+        }
+        
+        /* Main content area with glassmorphism */
+        main {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 40px !important;
+            background: rgba(255, 255, 255, 0.9) !important;
+            backdrop-filter: blur(10px) !important;
+            border-radius: 20px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            position: relative !important;
+            overflow: hidden !important;
+            min-height: calc(100vh - 300px) !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+        }
+        
+        main::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #f9ca24);
+            border-radius: 22px;
+            z-index: -1;
+            opacity: 0.1;
+        }
+        
+        footer {
+            text-align: center !important;
+            padding: 20px !important;
+            color: rgba(255, 255, 255, 0.8) !important;
+            font-size: 0.9em !important;
+            background: rgba(255, 255, 255, 0.1) !important;
+            margin-top: 20px !important;
+            border-radius: 15px !important;
+            backdrop-filter: blur(5px) !important;
+        }
+        
+        /* Flash messages with beautiful styling */
+        .flash {
+            padding: 15px 20px !important;
+            margin-bottom: 20px !important;
+            border-radius: 15px !important;
+            font-size: 0.9em !important;
+            backdrop-filter: blur(5px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        }
+        
+        .flash-success {
+            background: rgba(166, 230, 207, 0.9) !important;
+            color: #155724 !important;
+        }
+        
+        .flash-error {
+            background: rgba(255, 205, 210, 0.9) !important;
+            color: #721c24 !important;
+        }
+        
+        .flash-info {
+            background: rgba(209, 236, 241, 0.9) !important;
+            color: #0c5460 !important;
+        }
+        
+        .flash-warning {
+            background: rgba(255, 243, 205, 0.9) !important;
+            color: #856404 !important;
+        }
+        
+        /* Floating paws animations */
+        .paw-print {
+            position: absolute;
+            color: rgba(255, 182, 193, 0.3);
+            font-size: 1.2em;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        /* Cat paw falling animations */
+        #catpaws {
+            position: fixed;
+            top: -50px;
+            width: 100%;
+            text-align: right;
+            z-index: 10000;
+            pointer-events: none;
+        }
+        
+        #catpaws i {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            font-size: 2em;
+            z-index: 10000;
+            -webkit-animation: falling 5s 0s infinite;
+            animation: falling 5s 0s infinite;
+        }
+        
+        #catpaws i:nth-of-type(2n) { 
+            -webkit-animation: falling2 5s 0s infinite;
+            animation: falling2 5s 0s infinite;
+        }
+        
+        #catpaws i:nth-of-type(3n) { 
+            -webkit-animation: falling3 5s 0s infinite;
+            animation: falling3 5s 0s infinite;
+        }
+        
+        #catpaws i:nth-of-type(n)    { height: 23px; width: 30px; font-size: 1.5em; }
+        #catpaws i:nth-of-type(2n+1) { height: 18px; width: 24px; font-size: 1.2em; }
+        #catpaws i:nth-of-type(3n+2) { height: 28px; width: 35px; font-size: 1.8em; }
+        
+        #catpaws i:nth-of-type(n)   { -webkit-animation-delay: 1.9s; animation-delay: 1.9s; }
+        #catpaws i:nth-of-type(2n)  { -webkit-animation-delay: 3.9s; animation-delay: 3.9s; }
+        #catpaws i:nth-of-type(3n)  { -webkit-animation-delay: 2.3s; animation-delay: 2.3s; }
+        #catpaws i:nth-of-type(4n)  { -webkit-animation-delay: 4.4s; animation-delay: 4.4s; }
+        #catpaws i:nth-of-type(5n)  { -webkit-animation-delay: 5s; animation-delay: 5s; }
+        #catpaws i:nth-of-type(6n)  { -webkit-animation-delay: 3.5s; animation-delay: 3.5s; }
+        #catpaws i:nth-of-type(7n)  { -webkit-animation-delay: 2.8s; animation-delay: 2.8s; }
+        #catpaws i:nth-of-type(8n)  { -webkit-animation-delay: 1.5s; animation-delay: 1.5s; }
+        #catpaws i:nth-of-type(9n)  { -webkit-animation-delay: 3.3s; animation-delay: 3.3s; }
+        #catpaws i:nth-of-type(10n) { -webkit-animation-delay: 2.5s; animation-delay: 2.5s; }
+        #catpaws i:nth-of-type(11n) { -webkit-animation-delay: 1.2s; animation-delay: 1.2s; }
+        #catpaws i:nth-of-type(12n) { -webkit-animation-delay: 4.1s; animation-delay: 4.1s; }
+        #catpaws i:nth-of-type(13n) { -webkit-animation-delay: 1s; animation-delay: 1s; }
+        #catpaws i:nth-of-type(14n) { -webkit-animation-delay: 4.7s; animation-delay: 4.7s; }
+        #catpaws i:nth-of-type(15n) { -webkit-animation-delay: 3s; animation-delay: 3s; }
+        
+        #catpaws i:nth-of-type(n)    { opacity: 0.7; color: rgba(255, 182, 193, 0.8); }
+        #catpaws i:nth-of-type(3n+1) { opacity: 0.5; color: rgba(255, 192, 203, 0.9); }
+        #catpaws i:nth-of-type(3n+2) { opacity: 0.3; color: rgba(255, 160, 180, 0.7); }
+        
+        #catpaws i:nth-of-type(n) { transform: rotate(180deg); }
+        #catpaws i:nth-of-type(n) { -webkit-animation-timing-function: ease-in-out; animation-timing-function: ease-in-out; }
+        
+        @-webkit-keyframes falling {
+            0% { -webkit-transform: translate3d(300px, 0, 0) rotate(0deg); }
+            100% { -webkit-transform: translate3d(-350px, 700px, 0) rotate(90deg); opacity: 0; }
+        }
+        
+        @keyframes falling {
+            0% { transform: translate3d(300px, 0, 0) rotate(0deg); }
+            100% { transform: translate3d(-350px, 700px, 0) rotate(90deg); opacity: 0; }
+        }
+        
+        @-webkit-keyframes falling3 {
+            0% { -webkit-transform: translate3d(0, 0, 0) rotate(-20deg); }
+            100% { -webkit-transform: translate3d(-230px, 640px, 0) rotate(-70deg); opacity: 0; }
+        }
+        
+        @keyframes falling3 {
+            0% { transform: translate3d(0, 0, 0) rotate(-20deg); }
+            100% { transform: translate3d(-230px, 640px, 0) rotate(-70deg); opacity: 0; }
+        }
+        
+        @-webkit-keyframes falling2 {
+            0% { -webkit-transform: translate3d(0, 0, 0) rotate(90deg); }
+            100% { -webkit-transform: translate3d(-400px, 680px, 0) rotate(0deg); opacity: 0; }
+        }
+        
+        @keyframes falling2 {
+            0% { transform: translate3d(0, 0, 0) rotate(90deg); }
+            100% { transform: translate3d(-400px, 680px, 0) rotate(0deg); opacity: 0; }
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .admin-container { 
+                width: 95%; 
+                margin: 0 auto; 
+            }
+            .nyan-header { padding: 20px !important; }
+            .nyan-header h1 { font-size: 1.5em !important; margin-bottom: 15px !important; }
+            .nyan-header ul { 
+                flex-direction: column !important; 
+                gap: 8px !important; 
+                align-items: center !important;
+            }
+            .nyan-header a { 
+                display: block !important; 
+                text-align: center !important; 
+                width: 200px !important;
+            }
+            main { padding: 20px !important; }
+        }
+        
+        @media (max-width: 1650px) {
+            .admin-container { 
+                width: 95%; 
+                margin: 0 auto;
+            }
+        }
+        
+        @media (min-width: 1651px) {
+            .admin-container {
+                width: 90%;
+            }
+        }
+    </style>
+    
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Falling cat paws animation -->
+    <div id="catpaws">
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+        <i>🐾</i>
+    </div>
+    
+    <div class="admin-container">
+        <header>
+            <nav class="nyan-header">
+                <h1>{{ config.brand_emoji }} {{ config.brand_name }} Admin Purr-nel</h1>
+                <ul>
+                    <li><a href="{{ url_for('admin.dashboard') }}">🐾 Kitty Dashboard</a></li>
+                    <li><a href="{{ url_for('admin.list_users') }}">🐱 Manage Cats</a></li>
+                    <li><a href="{{ url_for('admin.key_manager') }}">🔑 Key Treats</a></li>
+                    <li><a href="{{ url_for('model_families.model_families_dashboard') }}">🧬 Model Families</a></li>
+                    <li><a href="{{ url_for('admin.anti_abuse') }}">🛡️ Anti-Hairball</a></li>
+                    <li><a href="{{ url_for('admin.stats') }}">📊 Paw-lytics</a></li>
+                    <li><a href="{{ url_for('admin.logout') }}">😴 Cat Nap</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer>
+            <p>&copy; {{ config.brand_name }} Admin Panel</p>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

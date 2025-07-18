@@ -1,0 +1,372 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Create User{% endblock %}
+
+{% block content %}
+<div class="create-user">
+    <h1>Create User Token</h1>
+    
+    {% if new_user_created %}
+    <div class="success-message">
+        <h3>User Created Successfully!</h3>
+        <p>A new user token has been created and is now ready to use. Check the recent users list below to see the new user.</p>
+    </div>
+    {% endif %}
+    
+    <div class="user-types-info">
+        <h3>User Token Types:</h3>
+        <ul>
+            <li><strong>Normal</strong> - Standard users with default quotas and rate limits.</li>
+            <li><strong>Special</strong> - Exempt from token quotas and rate limiting. Higher privileges.</li>
+            <li><strong>Temporary</strong> - Time-limited users with custom prompt limits. Auto-disabled when limits are reached.</li>
+        </ul>
+    </div>
+    
+    <form method="POST" action="{{ url_for('admin.create_user') }}" onsubmit="return validateUserForm()">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        
+        <div class="form-group">
+            <label for="type">User Type:</label>
+            <select id="type" name="type">
+                <option value="normal">Normal</option>
+                <option value="special">Special</option>
+                <option value="temporary">Temporary</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="nickname">Nickname (Optional):</label>
+            <input type="text" id="nickname" name="nickname" placeholder="Enter a memorable name">
+            <small>A human-readable identifier for this user</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="openai_limit">OpenAI Token Limit:</label>
+            <input type="number" id="openai_limit" name="openai_limit" min="0" placeholder="100000">
+            <small>Maximum tokens this user can consume for OpenAI models (leave empty for unlimited)</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="anthropic_limit">Anthropic Token Limit:</label>
+            <input type="number" id="anthropic_limit" name="anthropic_limit" min="0" placeholder="50000">
+            <small>Maximum tokens this user can consume for Anthropic models (leave empty for unlimited)</small>
+        </div>
+        
+        <!-- Temporary User Options -->
+        <fieldset id="temporaryUserOptions" style="display: none;">
+            <legend>Temporary User Options</legend>
+            <div class="temp-user-grid">
+                <p class="full-width">
+                    Temporary users will be disabled after the specified number of prompts. 
+                    These options apply only to new temporary users.
+                </p>
+                <div class="form-group">
+                    <label for="prompt_limits">Maximum Prompts:</label>
+                    <input type="number" id="prompt_limits" name="prompt_limits" min="1" value="10" placeholder="10">
+                    <small>Number of prompts before user is automatically disabled</small>
+                </div>
+                <div class="form-group">
+                    <label for="max_ips">Maximum IPs:</label>
+                    <input type="number" id="max_ips" name="max_ips" min="1" value="2" placeholder="2">
+                    <small>Maximum number of IP addresses this user can use</small>
+                </div>
+            </div>
+        </fieldset>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Create User</button>
+            <a href="{{ url_for('admin.list_users') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+    
+    {% if recent_users %}
+    <div class="recent-users">
+        <h3>Recent Users</h3>
+        <ul>
+            {% for user in recent_users %}
+            <li>
+                <a href="{{ url_for('admin.view_user', token=user.token) }}">
+                    {{ user.token[:8] }}... 
+                    {% if user.nickname %}<span class="nickname">({{ user.nickname }})</span>{% endif %}
+                    <span class="user-type badge-{{ user.type.value }}">{{ user.type.value }}</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .create-user {
+        max-width: 700px;
+        margin: 0 auto;
+    }
+    
+    .success-message {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .success-message h3 {
+        margin-top: 0;
+        color: #155724;
+    }
+    
+    .user-types-info {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .user-types-info h3 {
+        margin-top: 0;
+        color: #495057;
+    }
+    
+    .user-types-info ul {
+        margin-bottom: 0;
+    }
+    
+    .user-types-info li {
+        margin-bottom: 8px;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #495057;
+    }
+    
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        box-sizing: border-box;
+    }
+    
+    .form-group small {
+        display: block;
+        margin-top: 5px;
+        color: #666;
+        font-size: 12px;
+    }
+    
+    /* Temporary User Options */
+    #temporaryUserOptions {
+        border: 2px solid #ffc107;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+        background: #fff9c4;
+    }
+    
+    #temporaryUserOptions legend {
+        font-weight: bold;
+        color: #856404;
+        padding: 0 10px;
+    }
+    
+    .temp-user-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 10px;
+    }
+    
+    .temp-user-grid .full-width {
+        grid-column: 1 / -1;
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #856404;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 30px;
+    }
+    
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #545b62;
+    }
+    
+    /* Recent Users */
+    .recent-users {
+        margin-top: 40px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .recent-users h3 {
+        margin-top: 0;
+        color: #495057;
+    }
+    
+    .recent-users ul {
+        list-style: none;
+        padding: 0;
+    }
+    
+    .recent-users li {
+        margin-bottom: 8px;
+    }
+    
+    .recent-users a {
+        text-decoration: none;
+        color: #007bff;
+        font-family: monospace;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .recent-users a:hover {
+        text-decoration: underline;
+    }
+    
+    .nickname {
+        color: #6c757d;
+        font-family: inherit;
+        font-style: italic;
+    }
+    
+    .user-type {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-weight: bold;
+    }
+    
+    .badge-normal { background-color: #007bff; color: white; }
+    .badge-special { background-color: #28a745; color: white; }
+    .badge-temporary { background-color: #ffc107; color: black; }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .temp-user-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-actions {
+            flex-direction: column;
+        }
+        
+        .btn {
+            width: 100%;
+            text-align: center;
+        }
+    }
+</style>
+
+<script>
+    const typeInput = document.querySelector("select[name=type]");
+    const temporaryUserOptions = document.querySelector("#temporaryUserOptions");
+    const nicknameInput = document.querySelector("input[name=nickname]");
+    
+    // Handle user type changes
+    typeInput.addEventListener("change", function() {
+        localStorage.setItem("admin__create-user__type", typeInput.value);
+        
+        if (typeInput.value === "temporary") {
+            temporaryUserOptions.style.display = "block";
+            nicknameInput.required = false;
+        } else {
+            temporaryUserOptions.style.display = "none";
+            nicknameInput.required = false;
+        }
+    });
+    
+    // Load saved preferences
+    function loadDefaults() {
+        const defaultType = localStorage.getItem("admin__create-user__type");
+        if (defaultType) {
+            typeInput.value = defaultType;
+            typeInput.dispatchEvent(new Event("change"));
+        }
+    }
+    
+    // Enhanced form validation
+    function validateUserForm() {
+        const nickname = document.getElementById('nickname').value.trim();
+        const type = document.getElementById('type').value;
+        const openaiLimit = document.getElementById('openai_limit').value;
+        const anthropicLimit = document.getElementById('anthropic_limit').value;
+        
+        // Validate token limits
+        if (openaiLimit && (isNaN(openaiLimit) || parseInt(openaiLimit) < 0)) {
+            alert('OpenAI token limit must be a positive number');
+            return false;
+        }
+        
+        if (anthropicLimit && (isNaN(anthropicLimit) || parseInt(anthropicLimit) < 0)) {
+            alert('Anthropic token limit must be a positive number');
+            return false;
+        }
+        
+        // Validate temporary user options
+        if (type === 'temporary') {
+            const promptLimits = document.getElementById('prompt_limits').value;
+            const maxIps = document.getElementById('max_ips').value;
+            
+            if (!promptLimits || parseInt(promptLimits) < 1) {
+                alert('Prompt limits must be at least 1 for temporary users');
+                return false;
+            }
+            
+            if (!maxIps || parseInt(maxIps) < 1) {
+                alert('Maximum IPs must be at least 1 for temporary users');
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // Load defaults on page load
+    loadDefaults();
+</script>
+{% endblock %}

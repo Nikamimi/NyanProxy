@@ -1,0 +1,128 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Bulk Operations{% endblock %}
+
+{% block content %}
+<div class="bulk-operations">
+    <h1>Bulk Operations</h1>
+    
+    <div class="operation-section">
+        <h2>Quota Management</h2>
+        <div class="operation-card">
+            <h3>Refresh All User Quotas</h3>
+            <p>Reset token usage counters for all users</p>
+            <button class="btn btn-warning" onclick="bulkRefreshQuotas()">Refresh All Quotas</button>
+        </div>
+    </div>
+    
+    <div class="operation-section">
+        <h2>User Management</h2>
+        <div class="operation-card">
+            <h3>Bulk User Import</h3>
+            <p>Import multiple users from JSON file</p>
+            <input type="file" id="import-file" accept=".json">
+            <button class="btn btn-primary" onclick="importUsers()">Import Users</button>
+        </div>
+        
+        <div class="operation-card">
+            <h3>Export All Users</h3>
+            <p>Export all user data to JSON file</p>
+            <button class="btn btn-info" onclick="exportUsers()">Export Users</button>
+        </div>
+    </div>
+    
+    <div class="operation-section">
+        <h2>Cleanup Operations</h2>
+        <div class="operation-card">
+            <h3>Clean Expired Temporary Users</h3>
+            <p>Remove all expired temporary users</p>
+            <button class="btn btn-danger" onclick="cleanupExpiredUsers()">Cleanup Expired</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .operation-section {
+        margin-bottom: 40px;
+    }
+    .operation-card {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        border: 1px solid #dee2e6;
+    }
+    .operation-card h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        color: #495057;
+    }
+    .operation-card p {
+        margin-bottom: 15px;
+        color: #6c757d;
+    }
+    .operation-card input[type="file"] {
+        margin-right: 10px;
+        margin-bottom: 10px;
+    }
+</style>
+
+<script>
+function importUsers() {
+    const fileInput = document.getElementById('import-file');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert('Please select a file to import');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    fetch('/admin/bulk/import-users', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Successfully imported ${data.imported} users`);
+            fileInput.value = '';
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error importing users:', error);
+        alert('Error importing users');
+    });
+}
+
+function cleanupExpiredUsers() {
+    if (confirm('Are you sure you want to remove all expired temporary users?')) {
+        fetch('/admin/bulk/cleanup-expired', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Successfully removed ${data.removed} expired users`);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error cleaning up users:', error);
+            alert('Error cleaning up users');
+        });
+    }
+}
+</script>
+{% endblock %}

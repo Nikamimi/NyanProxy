@@ -1,0 +1,335 @@
+{% extends "admin/base.html" %}
+
+{% block title %}View User{% endblock %}
+
+{% block content %}
+{% set user = user_data.user %}
+<div class="view-user">
+    <div class="user-header">
+        <h1>User Details</h1>
+        <div class="user-actions">
+            <a href="{{ url_for('admin.edit_user', token=user.token) }}" class="btn btn-primary">Edit User</a>
+            {% if user.disabled_at %}
+                <button class="btn btn-success" onclick="enableUser('{{ user.token }}')">Enable User</button>
+            {% else %}
+                <button class="btn btn-warning" onclick="disableUser('{{ user.token }}')">Disable User</button>
+            {% endif %}
+            <button class="btn btn-info" onclick="rotateUserToken('{{ user.token }}')">Rotate Token</button>
+            <button class="btn btn-danger" onclick="deleteUser('{{ user.token }}')">Delete User</button>
+        </div>
+    </div>
+    
+    <div class="user-info">
+        <div class="info-section">
+            <h2>Basic Information</h2>
+            <table class="info-table">
+                <tr>
+                    <td><strong>Token:</strong></td>
+                    <td>
+                        <code>{{ user.token }}</code>
+                        <button class="btn btn-sm btn-copy" onclick="copyToClipboard('{{ user.token }}')">Copy</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Nickname:</strong></td>
+                    <td>{{ user.nickname or 'N/A' }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Type:</strong></td>
+                    <td><span class="badge badge-{{ user.type }}">{{ user.type }}</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Created:</strong></td>
+                    <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Last Used:</strong></td>
+                    <td>{{ user.last_used.strftime('%Y-%m-%d %H:%M:%S') if user.last_used else 'Never' }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Status:</strong></td>
+                    <td>
+                        {% if user.disabled_at %}
+                            <span class="status-disabled">Disabled</span>
+                            <small>({{ user.disabled_reason or 'No reason provided' }})</small>
+                        {% else %}
+                            <span class="status-active">Active</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="info-section">
+            <h2>IP Addresses</h2>
+            {% if user.ip %}
+                <ul class="ip-list">
+                    {% for ip in user.ip %}
+                        <li>{{ ip[:16] }}... (hashed)</li>
+                    {% endfor %}
+                </ul>
+                <p><small>{{ user.ip|length }} IP address(es) registered</small></p>
+            {% else %}
+                <p><em>No IP addresses registered</em></p>
+            {% endif %}
+        </div>
+        
+        <div class="info-section">
+            <h2>Token Usage</h2>
+            <table class="usage-table">
+                <thead>
+                    <tr>
+                        <th>Model Family</th>
+                        <th>Input Tokens</th>
+                        <th>Output Tokens</th>
+                        <th>Total Tokens</th>
+                        <th>Limit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for family, count in user.token_counts.items() %}
+                    <tr>
+                        <td>{{ family }}</td>
+                        <td>{{ count.input }}</td>
+                        <td>{{ count.output }}</td>
+                        <td>{{ count.total }}</td>
+                        <td>{{ user.token_limits.get(family, 'Unlimited') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="info-section">
+            <h2>Usage Statistics</h2>
+            {% if user_data.usage_stats %}
+                <div class="usage-stats">
+                    <div class="stat-item">
+                        <strong>Total Requests:</strong> {{ user_data.usage_stats.get('total_requests', 0) }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>Total Tokens:</strong> {{ user_data.usage_stats.get('total_tokens', 0) }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>Input Tokens:</strong> {{ user_data.usage_stats.get('input_tokens', 0) }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>Output Tokens:</strong> {{ user_data.usage_stats.get('output_tokens', 0) }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>Chat Completions:</strong> {{ user_data.usage_stats.get('chat_completions', 0) }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>API Errors:</strong> {{ user_data.usage_stats.get('api_errors', 0) }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>Total Cost:</strong> ${{ "%.4f"|format(user_data.usage_stats.get('total_cost', 0)) }}
+                    </div>
+                    <div class="stat-item">
+                        <strong>Success Rate:</strong> {{ "%.1f"|format(user_data.usage_stats.get('success_rate', 0)) }}%
+                    </div>
+                    <div class="stat-item">
+                        <strong>Avg Response Time:</strong> {{ "%.0f"|format(user_data.usage_stats.get('avg_response_time', 0)) }}ms
+                    </div>
+                </div>
+                
+                {% if user_data.usage_stats.get('model_usage') %}
+                <div class="model-usage-stats">
+                    <h3>Model Usage Details</h3>
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th>Model</th>
+                                <th>Requests</th>
+                                <th>Tokens</th>
+                                <th>Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for model, stats in user_data.usage_stats.get('model_usage', {}).items() %}
+                            <tr>
+                                <td>{{ model }}</td>
+                                <td>{{ stats.get('requests', 0) }}</td>
+                                <td>{{ stats.get('tokens', 0) }}</td>
+                                <td>${{ "%.4f"|format(stats.get('cost', 0)) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% elif user_data.usage_stats.get('model_families') %}
+                <div class="model-families-stats">
+                    <h3>Model Family Usage</h3>
+                    <table class="usage-table">
+                        <thead>
+                            <tr>
+                                <th>Model Family</th>
+                                <th>Requests</th>
+                                <th>Input Tokens</th>
+                                <th>Output Tokens</th>
+                                <th>Total Tokens</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for family, stats in user_data.usage_stats.get('model_families', {}).items() %}
+                            <tr>
+                                <td>{{ family }}</td>
+                                <td>{{ stats.get('requests', 0) }}</td>
+                                <td>{{ stats.get('input_tokens', 0) }}</td>
+                                <td>{{ stats.get('output_tokens', 0) }}</td>
+                                <td>{{ stats.get('total_tokens', 0) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            {% else %}
+                <p><em>No usage statistics available</em></p>
+            {% endif %}
+        </div>
+        
+        <div class="info-section">
+            <h2>Recent Activity</h2>
+            {% if user_data.recent_events %}
+                <table class="events-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Event</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in user_data.recent_events %}
+                        <tr>
+                            <td>{{ event.timestamp or 'N/A' }}</td>
+                            <td>{{ event.event_type }}</td>
+                            <td>
+                                {% if event.payload.action %}
+                                    {{ event.payload.action }}
+                                {% elif event.payload.model_family %}
+                                    {{ event.payload.model_family }} - {{ event.payload.total_tokens }} tokens
+                                {% else %}
+                                    {{ event.payload | truncate(50) }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p><em>No recent activity</em></p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .user-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #ddd;
+    }
+    .user-actions {
+        display: flex;
+        gap: 10px;
+    }
+    .info-section {
+        margin-bottom: 30px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+    .info-section h2 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        color: #495057;
+    }
+    .info-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .info-table td {
+        padding: 8px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .info-table td:first-child {
+        width: 150px;
+        vertical-align: top;
+    }
+    .badge {
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 0.8em;
+    }
+    .badge-normal { background-color: #007bff; color: white; }
+    .badge-special { background-color: #28a745; color: white; }
+    .badge-temporary { background-color: #ffc107; color: black; }
+    .status-active { color: #28a745; }
+    .status-disabled { color: #dc3545; }
+    .ip-list {
+        list-style: none;
+        padding: 0;
+    }
+    .ip-list li {
+        padding: 5px 0;
+        border-bottom: 1px solid #eee;
+    }
+    .usage-table,
+    .events-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    .usage-table th,
+    .usage-table td,
+    .events-table th,
+    .events-table td {
+        padding: 8px;
+        border: 1px solid #dee2e6;
+        text-align: left;
+    }
+    .usage-table th,
+    .events-table th {
+        background-color: #f8f9fa;
+    }
+    .usage-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+    .stat-item {
+        padding: 10px;
+        background: white;
+        border-radius: 3px;
+        border: 1px solid #dee2e6;
+    }
+    .btn-copy {
+        margin-left: 10px;
+        padding: 2px 8px;
+        font-size: 0.8em;
+        background-color: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 2px;
+        cursor: pointer;
+    }
+    .btn-copy:hover {
+        background-color: #5a6268;
+    }
+    .copy-success {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 20px;
+        background-color: #28a745;
+        color: white;
+        border-radius: 5px;
+        z-index: 1000;
+    }
+</style>
+{% endblock %}

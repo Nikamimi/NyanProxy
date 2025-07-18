@@ -1,0 +1,143 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# API Keys & Secrets (SECURITY - NEVER COMMIT)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+api_keys.txt
+secrets.txt
+credentials.json
+service-account.json
+firebase-adminsdk-*.json
+config.json
+settings.json
+.secrets/
+secrets/
+
+# Flask
+instance/
+.webassets-cache
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+
+# HuggingFace
+.huggingface/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+database/
+
+# Claude Code settings
+.claude/
+
+# Local development files
+start.bat
+run.cmd
+*.cmd
+*.bat
+!start.bat
+
+# Windows system files
+nul
+con
+prn
+aux
+*.lnk
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+*.orig
+
+# Local configuration
+local_settings.py
+local_config.py
+settings_local.py
+config_local.py
+
+# User-specific files
+.user
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
