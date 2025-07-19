@@ -1,8 +1,8 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from typing import Dict, Any, List
 from datetime import datetime
 
-from ..middleware.auth import require_admin_auth
+from ..middleware.auth import require_admin_auth, require_auth
 from ..services.user_store import user_store, UserType
 from ..services.firebase_logger import event_logger
 
@@ -377,3 +377,109 @@ def bulk_refresh_quotas():
         'affected_users': affected_users,
         'message': f'Refreshed quotas for {affected_users} users'
     })
+
+# Public user stats endpoint (for logged-in users to view their own stats)
+@admin_bp.route('/user/stats', methods=['GET'])
+@require_auth
+def get_my_user_stats():
+    """Get comprehensive user statistics for the authenticated user"""
+    # Get user token from auth data
+    user_token = g.auth_data.get('token')
+    user = user_store.get_user(user_token)
+    
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Calculate comprehensive stats
+    total_tokens = sum(count.total for count in user.token_counts.values())
+    total_input_tokens = sum(count.input for count in user.token_counts.values())
+    total_output_tokens = sum(count.output for count in user.token_counts.values())
+    total_cost = sum(count.cost_usd for count in user.token_counts.values())
+    
+    # Model usage stats
+    model_stats = {}
+    for family, count in user.token_counts.items():
+        model_stats[family] = {
+            'requests': count.requests,
+            'input_tokens': count.input,
+            'output_tokens': count.output,
+            'total_tokens': count.total,
+            'cost_usd': round(count.cost_usd, 4),
+            'first_request': count.first_request.isoformat() if count.first_request else None,
+            'last_request': count.last_request.isoformat() if count.last_request else None,
+            'limit': user.get_token_limit(family),
+            'usage_percentage': round((count.total / user.get_token_limit(family)) * 100, 2) if user.get_token_limit(family) > 0 else 0
+        }
+    
+    # IP usage stats
+    ip_stats = []
+    for ip_usage in user.ip_usage:
+        ip_stats.append({
+            'ip_hash': ip_usage.ip,
+            'requests': ip_usage.prompt_count,
+            'total_tokens': ip_usage.total_tokens,
+            'first_seen': ip_usage.first_seen.isoformat() if ip_usage.first_seen else None,
+            'last_used': ip_usage.last_used.isoformat() if ip_usage.last_used else None,
+            'models_used': ip_usage.models_used,
+            'user_agent': ip_usage.user_agent,
+            'is_suspicious': ip_usage.is_suspicious
+        })
+    
+    # Calculate time-based stats
+    days_since_created = (datetime.now() - user.created_at).days
+    days_since_last_used = (datetime.now() - user.last_used).days if user.last_used else None
+    
+    # Get recent activity from event logger
+    try:
+        usage_stats = event_logger.get_usage_stats(user_token)
+        recent_events = event_logger.get_events(token=user_token, limit=10)
+    except:
+        usage_stats = {}
+        recent_events = []
+    
+    # Build response with cat-themed elements
+    stats_response = {
+        'user_info': {
+            'token': user_token[:8] + '...',  # Partially masked for security
+            'type': user.type.value,
+            'nickname': user.nickname,
+            'created_at': user.created_at.isoformat(),
+            'last_used': user.last_used.isoformat() if user.last_used else None,
+            'days_since_created': days_since_created,
+            'days_since_last_used': days_since_last_used,
+            'is_disabled': user.is_disabled(),
+            'disabled_reason': user.disabled_reason
+        },
+        'usage_summary': {
+            'total_requests': user.total_requests,
+            'total_tokens': total_tokens,
+            'total_input_tokens': total_input_tokens,
+            'total_output_tokens': total_output_tokens,
+            'total_cost_usd': round(total_cost, 4),
+            'average_tokens_per_request': round(total_tokens / user.total_requests, 2) if user.total_requests > 0 else 0,
+            'ip_count': len(user.ip),
+            'rate_limit_hits': user.rate_limit_hits,
+            'suspicious_activity_count': user.suspicious_activity_count
+        },
+        'model_usage': model_stats,
+        'ip_usage': ip_stats,
+        'preferred_models': user.preferred_models,
+        'cat_stats': {
+            'mood': user.mood,
+            'favorite_treat': user.favorite_treat,
+            'paw_prints': user.paw_prints,
+            'happiness_level': min(100, max(0, 100 - user.suspicious_activity_count * 10 + user.paw_prints * 2))
+        },
+        'limits': {
+            'token_limits': user.token_limits,
+            'prompt_limits': user.prompt_limits,
+            'max_ips': user.max_ips,
+            'remaining_prompts': user.get_remaining_prompts()
+        },
+        'recent_activity': {
+            'usage_stats': usage_stats,
+            'recent_events': recent_events[:5]  # Limit to last 5 events for security
+        }
+    }
+    
+    return jsonify(stats_response)

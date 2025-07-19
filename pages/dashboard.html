@@ -398,6 +398,323 @@
                 opacity: 0;
             }
         }
+        
+        /* Login Button Styles */
+        .login-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .login-btn {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%);
+            border: none;
+            border-radius: 50px;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(255, 154, 158, 0.4);
+            font-family: 'Quicksand', sans-serif;
+            position: relative;
+            overflow: hidden;
+            min-width: 200px;
+        }
+        
+        .login-btn::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transform: rotate(45deg);
+            transition: all 0.6s ease;
+            opacity: 0;
+        }
+        
+        .login-btn:hover::before {
+            animation: shimmer 0.6s ease-in-out;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); opacity: 0; }
+        }
+        
+        .login-btn:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 15px 35px rgba(255, 154, 158, 0.6);
+            background: linear-gradient(135deg, #ffa8ac 0%, #fdd6f7 50%, #fdd6f7 100%);
+        }
+        
+        .login-btn:active {
+            transform: translateY(-1px) scale(1.02);
+        }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #ffd3e1 0%, #c8e6c9 25%, #bbdefb 50%, #f8bbd9 75%, #ffcccb 100%);
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 25px;
+            width: 90%;
+            max-width: 450px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            position: relative;
+            animation: modalSlideIn 0.3s ease-out;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: translateY(-50px) scale(0.9); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .modal-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        
+        .modal-header h2 {
+            color: #333;
+            font-size: 1.8em;
+            margin: 0;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .close {
+            color: #666;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s ease;
+            position: absolute;
+            right: 20px;
+            top: 15px;
+        }
+        
+        .close:hover {
+            color: #333;
+            transform: scale(1.1);
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 15px;
+            font-size: 1em;
+            font-family: 'Quicksand', sans-serif;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: #ff9a9e;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 0 20px rgba(255, 154, 158, 0.3);
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 25px;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Quicksand', sans-serif;
+            min-width: 100px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+            color: #333;
+            box-shadow: 0 4px 15px rgba(255, 234, 167, 0.4);
+        }
+        
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 234, 167, 0.6);
+        }
+        
+        /* User Stats Section Styles */
+        .user-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .user-info-card {
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 15px;
+            padding: 20px;
+            border-left: 4px solid #ff9a9e;
+        }
+        
+        .user-info-card h4 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #a8e6cf 0%, #dcedc8 100%);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.3s ease;
+            border-left: 4px solid #4caf50;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-3px);
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+        
+        .model-usage-section {
+            margin-top: 25px;
+        }
+        
+        .model-usage-section h4 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .model-card {
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .model-name {
+            font-weight: bold;
+            color: #333;
+            text-transform: capitalize;
+        }
+        
+        .model-cost {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            height: 8px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #8bc34a);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+        
+        .model-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8em;
+            color: #666;
+        }
+        
+        .cat-mood {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        
+        .mood-happy { background: linear-gradient(135deg, #a8e6cf 0%, #dcedc8 100%); }
+        .mood-playful { background: linear-gradient(135deg, #ffd54f 0%, #ffecb3 100%); }
+        .mood-sleepy { background: linear-gradient(135deg, #bbdefb 0%, #e3f2fd 100%); }
+        .mood-grumpy { background: linear-gradient(135deg, #ffcdd2 0%, #f8bbd9 100%); }
     </style>
 </head>
 <body>
@@ -441,6 +758,60 @@
         <div class="header">
             <h1>{{config.title}} 😸</h1>
             <p>{{config.subtitle}} <span class="cat-emoji">🐾</span></p>
+        </div>
+        
+        <!-- Login Button -->
+        <div class="login-container">
+            <button id="loginButton" class="login-btn" onclick="openLoginModal()">
+                <span class="cat-emoji">🐱</span> Login to View Your Stats <span class="cat-emoji">📊</span>
+            </button>
+            <button id="logoutButton" class="login-btn" onclick="logout()" style="display: none;">
+                <span class="cat-emoji">👋</span> Logout <span class="cat-emoji">🐾</span>
+            </button>
+        </div>
+        
+        <!-- User Stats Section (hidden by default) -->
+        <div id="userStatsSection" class="card" style="display: none; margin-bottom: 25px;">
+            <h3><span class="cat-emoji">📊</span> Your Personal Stats <span class="cat-emoji">🐱</span></h3>
+            
+            <!-- User Info -->
+            <div class="user-info-grid">
+                <div class="user-info-card">
+                    <h4><span class="cat-emoji">👤</span> User Info</h4>
+                    <div id="userInfoContent">Loading...</div>
+                </div>
+                
+                <div class="user-info-card">
+                    <h4><span class="cat-emoji">🐾</span> Cat Stats</h4>
+                    <div id="catStatsContent">Loading...</div>
+                </div>
+            </div>
+            
+            <!-- Usage Summary -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalRequests">-</div>
+                    <div class="stat-label"><span class="cat-emoji">📝</span> Total Requests</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalTokens">-</div>
+                    <div class="stat-label"><span class="cat-emoji">🔢</span> Total Tokens</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalCost">-</div>
+                    <div class="stat-label"><span class="cat-emoji">💰</span> Total Cost</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="pawPrints">-</div>
+                    <div class="stat-label"><span class="cat-emoji">🐾</span> Paw Prints</div>
+                </div>
+            </div>
+            
+            <!-- Model Usage -->
+            <div class="model-usage-section">
+                <h4><span class="cat-emoji">🤖</span> Model Usage</h4>
+                <div id="modelUsageContent">Loading...</div>
+            </div>
         </div>
         
         <div class="grid">
@@ -544,80 +915,6 @@
                 {% endif %}
             </div>
             
-            <div class="card">
-                <h3>📈 Request Statistics <span class="cat-emoji">📊</span></h3>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Endpoint</th>
-                            <th>Requests</th>
-                            <th>Errors</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Chat Completions</td>
-                            <td>{{request_counts.chat_completions}}</td>
-                            <td>{{error_counts.chat_completions}}</td>
-                        </tr>
-                        <tr>
-                            <td>Models</td>
-                            <td>{{request_counts.models}}</td>
-                            <td>{{error_counts.models}}</td>
-                        </tr>
-                        <tr>
-                            <td>Health Check</td>
-                            <td>{{request_counts.health}}</td>
-                            <td>0</td>
-                        </tr>
-                        <tr>
-                            <td>Key Status</td>
-                            <td>{{request_counts.key_status}}</td>
-                            <td>0</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="card">
-                <h3>⏱️ Recent Activity <span class="cat-emoji">🕐</span></h3>
-                <div class="metric">
-                    <div class="metric-label">Last Request <span class="cat-emoji">📝</span></div>
-                    <div class="metric-value" style="font-size: 1.2em;">
-                        {{last_request or 'No requests yet'}}
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Admin endpoints moved to bottom, less prominent -->
-            <div class="card" style="opacity: 0.8;">
-                <h3>🔧 Admin Endpoints <span class="cat-emoji">⚙️</span></h3>
-                <div class="cute-divider">🐾 ～ ～ ～ 🐾</div>
-                
-                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
-                    <h4>💊 Health Check</h4>
-                    <div class="endpoint-url">{{base_url}}/health</div>
-                    <p>Simple health check endpoint to verify proxy status</p>
-                </div>
-                
-                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
-                    <h4>🔑 Key Status</h4>
-                    <div class="endpoint-url">{{base_url}}/api/keys/status</div>
-                    <p>Check which API keys are configured and available</p>
-                </div>
-                
-                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
-                    <h4>🏥 Key Health</h4>
-                    <div class="endpoint-url">{{base_url}}/api/keys/health</div>
-                    <p>Get detailed health status for all API keys with timestamps</p>
-                </div>
-                
-                <div class="endpoint-card" style="background: rgba(200, 200, 200, 0.3);">
-                    <h4>📊 Metrics</h4>
-                    <div class="endpoint-url">{{base_url}}/api/metrics</div>
-                    <p>Get detailed JSON metrics about proxy performance</p>
-                </div>
-            </div>
         </div>
         
         <div class="refresh">
@@ -625,5 +922,215 @@
             <br>Made with <span class="cat-emoji">❤️</span> and lots of <span class="cat-emoji">☕</span> for your AI needs!
         </div>
     </div>
+    
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeLoginModal()">&times;</span>
+            <div class="modal-header">
+                <h2><span class="cat-emoji">🐱</span> Login to Your Stats <span class="cat-emoji">📈</span></h2>
+                <p style="color: #666; margin: 10px 0;">Enter your user token to view personalized usage statistics</p>
+            </div>
+            <form id="loginForm">
+                <div class="input-group">
+                    <label for="userToken"><span class="cat-emoji">🔑</span> User Token:</label>
+                    <input type="password" id="userToken" name="userToken" placeholder="Enter your user token..." required>
+                </div>
+                <div class="modal-buttons">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="cat-emoji">🚀</span> Login
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="closeLoginModal()">
+                        <span class="cat-emoji">🐾</span> Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentUserToken = null;
+        let userStats = null;
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if user is already logged in
+            const savedToken = localStorage.getItem('userToken');
+            if (savedToken) {
+                currentUserToken = savedToken;
+                loadUserStats();
+            }
+        });
+        
+        // Login Modal Functions
+        function openLoginModal() {
+            document.getElementById('loginModal').style.display = 'block';
+            document.getElementById('userToken').focus();
+        }
+        
+        function closeLoginModal() {
+            document.getElementById('loginModal').style.display = 'none';
+            document.getElementById('userToken').value = '';
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('loginModal');
+            if (event.target === modal) {
+                closeLoginModal();
+            }
+        }
+        
+        // Handle login form submission
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const userToken = document.getElementById('userToken').value;
+            
+            if (userToken.trim()) {
+                currentUserToken = userToken;
+                localStorage.setItem('userToken', userToken);
+                closeLoginModal();
+                loadUserStats();
+            }
+        });
+        
+        // Logout function
+        function logout() {
+            currentUserToken = null;
+            userStats = null;
+            localStorage.removeItem('userToken');
+            
+            // Hide user stats and show login button
+            document.getElementById('userStatsSection').style.display = 'none';
+            document.getElementById('loginButton').style.display = 'inline-block';
+            document.getElementById('logoutButton').style.display = 'none';
+        }
+        
+        // Load user stats from API
+        async function loadUserStats() {
+            if (!currentUserToken) return;
+            
+            try {
+                const response = await fetch('/admin/api/user/stats', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${currentUserToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    userStats = await response.json();
+                    displayUserStats();
+                    
+                    // Show logout button and hide login button
+                    document.getElementById('loginButton').style.display = 'none';
+                    document.getElementById('logoutButton').style.display = 'inline-block';
+                    document.getElementById('userStatsSection').style.display = 'block';
+                } else if (response.status === 401) {
+                    // Invalid token
+                    alert('🚫 Invalid token. Please login again.');
+                    logout();
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Failed to load user stats:', error);
+                alert('❌ Failed to load user stats. Please try again.');
+                logout();
+            }
+        }
+        
+        // Display user stats in the UI
+        function displayUserStats() {
+            if (!userStats) return;
+            
+            // Update user info
+            const userInfoContent = document.getElementById('userInfoContent');
+            userInfoContent.innerHTML = `
+                <p><strong>Token:</strong> ${userStats.user_info.token}</p>
+                <p><strong>Type:</strong> ${userStats.user_info.type}</p>
+                <p><strong>Nickname:</strong> ${userStats.user_info.nickname || 'Not set'}</p>
+                <p><strong>Member since:</strong> ${formatDate(userStats.user_info.created_at)}</p>
+                <p><strong>Last used:</strong> ${userStats.user_info.last_used ? formatDate(userStats.user_info.last_used) : 'Never'}</p>
+            `;
+            
+            // Update cat stats
+            const catStatsContent = document.getElementById('catStatsContent');
+            const moodEmoji = getMoodEmoji(userStats.cat_stats.mood);
+            catStatsContent.innerHTML = `
+                <p><strong>Mood:</strong> <span class="cat-mood mood-${userStats.cat_stats.mood}">${moodEmoji} ${userStats.cat_stats.mood}</span></p>
+                <p><strong>Happiness Level:</strong> ${userStats.cat_stats.happiness_level}% 😸</p>
+                <p><strong>Favorite Treat:</strong> ${userStats.cat_stats.favorite_treat || 'Still discovering... 🍰'}</p>
+            `;
+            
+            // Update summary stats
+            document.getElementById('totalRequests').textContent = userStats.usage_summary.total_requests.toLocaleString();
+            document.getElementById('totalTokens').textContent = userStats.usage_summary.total_tokens.toLocaleString();
+            document.getElementById('totalCost').textContent = '$' + userStats.usage_summary.total_cost_usd.toFixed(4);
+            document.getElementById('pawPrints').textContent = userStats.cat_stats.paw_prints.toLocaleString();
+            
+            // Update model usage
+            displayModelUsage();
+        }
+        
+        // Display model usage breakdown
+        function displayModelUsage() {
+            const modelUsageContent = document.getElementById('modelUsageContent');
+            
+            if (Object.keys(userStats.model_usage).length === 0) {
+                modelUsageContent.innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">No usage data yet. Start making requests to see stats! 🚀</p>';
+                return;
+            }
+            
+            let modelHTML = '';
+            for (const [modelFamily, stats] of Object.entries(userStats.model_usage)) {
+                const usagePercentage = Math.min(100, stats.usage_percentage);
+                
+                modelHTML += `
+                    <div class="model-card">
+                        <div class="model-header">
+                            <span class="model-name">${modelFamily} 🤖</span>
+                            <span class="model-cost">$${stats.cost_usd}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${usagePercentage}%"></div>
+                        </div>
+                        <div class="model-stats">
+                            <span>Requests: ${stats.requests.toLocaleString()}</span>
+                            <span>Tokens: ${stats.total_tokens.toLocaleString()}</span>
+                            <span>Usage: ${usagePercentage.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            modelUsageContent.innerHTML = modelHTML;
+        }
+        
+        // Helper functions
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        }
+        
+        function getMoodEmoji(mood) {
+            const moodEmojis = {
+                'happy': '😸',
+                'playful': '😺',
+                'sleepy': '😴',
+                'grumpy': '😾'
+            };
+            return moodEmojis[mood] || '😺';
+        }
+        
+        // Handle escape key to close modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeLoginModal();
+            }
+        });
+    </script>
 </body>
 </html>

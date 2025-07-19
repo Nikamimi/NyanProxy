@@ -32,6 +32,7 @@ venv.bak/
 
 # Environment variables
 .env.local
+.env_backup
 .env.development.local
 .env.test.local
 .env.production.local
@@ -141,3 +142,9 @@ config_local.py
 *.suo
 *.userosscache
 *.sln.docstates
+
+# Personal server management scripts
+server_control.py
+server_control.bat
+server_config.txt
+digitalocean.md
