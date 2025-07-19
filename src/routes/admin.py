@@ -4,7 +4,7 @@ from datetime import datetime
 
 from ..middleware.auth import require_admin_auth, require_auth
 from ..services.user_store import user_store, UserType
-from ..services.firebase_logger import event_logger
+from ..services.firebase_logger import event_logger, structured_logger
 
 admin_bp = Blueprint('admin_api', __name__, url_prefix='/admin/api')
 
@@ -84,14 +84,15 @@ def create_user():
         )
         
         # Log admin action
-        event_logger.log_user_action(
-            token=token,
+        structured_logger.log_user_action(
+            user_token=token,
             action='user_created',
             details={
                 'created_by': 'admin',
                 'type': user_type.value,
                 'nickname': nickname
-            }
+            },
+            admin_user='admin'
         )
         
         return jsonify({
@@ -154,13 +155,14 @@ def update_user(token: str):
     user_store.flush_queue.add(token)
     
     # Log admin action
-    event_logger.log_user_action(
-        token=token,
+    structured_logger.log_user_action(
+        user_token=token,
         action='user_updated',
         details={
             'updated_by': 'admin',
             'changes': data
-        }
+        },
+        admin_user='admin'
     )
     
     return jsonify({
@@ -168,54 +170,133 @@ def update_user(token: str):
         'message': 'User updated successfully'
     })
 
+def require_admin_auth_or_session(f):
+    """Decorator to require admin authentication via API key OR web session"""
+    from functools import wraps
+    from flask import session, jsonify, request
+    from ..config.auth import auth_config
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Check for web session first
+        if session.get('admin_authenticated'):
+            return f(*args, **kwargs)
+        
+        # Check for admin key in Authorization header
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            admin_key = auth_header[7:]  # Remove "Bearer " prefix
+            if admin_key == auth_config.admin_key:
+                return f(*args, **kwargs)
+        
+        return jsonify({"error": "Admin authentication required"}), 401
+    
+    return decorated_function
+
 @admin_bp.route('/users/<token>/disable', methods=['POST'])
-@require_admin_auth
+@require_admin_auth_or_session
 def disable_user(token: str):
     """Disable/ban a user"""
     data = request.get_json() or {}
     reason = data.get('reason', 'Disabled by admin')
     
+    print(f"🐱 DEBUG disable_user API: Disabling user {token[:8]} with reason '{reason}'")
+    
+    # Check user state before disabling
+    user_before = user_store.get_user(token)
+    if not user_before:
+        print(f"🚫 DEBUG disable_user API: User {token[:8]} not found")
+        return jsonify({'error': 'User not found'}), 404
+    
+    print(f"🐱 DEBUG disable_user API: User {token[:8]} before - disabled_at: {user_before.disabled_at}")
+    
     success = user_store.disable_user(token, reason)
     
     if not success:
+        print(f"🚫 DEBUG disable_user API: Failed to disable user {token[:8]}")
         return jsonify({'error': 'User not found'}), 404
     
+    # Check user state after disabling
+    user_after = user_store.get_user(token)
+    print(f"🔍 ADMIN DISABLE: After disable_user call:")
+    print(f"🔍 ADMIN DISABLE: User {token[:8]} disabled_at: {user_after.disabled_at}")
+    print(f"🔍 ADMIN DISABLE: User {token[:8]} disabled_reason: {user_after.disabled_reason}")
+    print(f"🔍 ADMIN DISABLE: User {token[:8]} status: {getattr(user_after, 'status', 'not set')}")
+    print(f"🔍 ADMIN DISABLE: User {token[:8]} is_disabled(): {user_after.is_disabled()}")
+    print(f"🔍 ADMIN DISABLE: User {token[:8]} to_dict status: {user_after.to_dict().get('status')}")
+    print(f"🐱 DEBUG disable_user API: User {token[:8]} after - disabled_at: {user_after.disabled_at}, reason: {user_after.disabled_reason}")
+    
     # Log admin action
-    event_logger.log_user_action(
-        token=token,
+    structured_logger.log_user_action(
+        user_token=token,
         action='user_disabled',
         details={
             'disabled_by': 'admin',
             'reason': reason
-        }
+        },
+        admin_user='admin'
     )
     
     return jsonify({
         'success': True,
-        'message': 'User disabled successfully'
+        'message': 'User disabled successfully',
+        'user_state': {
+            'disabled_at': user_after.disabled_at.isoformat() if user_after.disabled_at else None,
+            'disabled_reason': user_after.disabled_reason,
+            'status': getattr(user_after, 'status', 'disabled').value if hasattr(getattr(user_after, 'status', None), 'value') else str(getattr(user_after, 'status', 'disabled')),
+            'is_disabled': user_after.is_disabled()
+        }
     })
 
 @admin_bp.route('/users/<token>/enable', methods=['POST'])
-@require_admin_auth
+@require_admin_auth_or_session
 def enable_user(token: str):
     """Enable/unban a user"""
+    print(f"🐱 DEBUG enable_user API: Enabling user {token[:8]}")
+    
+    # Check user state before enabling
+    user_before = user_store.get_user(token)
+    if not user_before:
+        print(f"🚫 DEBUG enable_user API: User {token[:8]} not found")
+        return jsonify({'error': 'User not found'}), 404
+    
+    print(f"🐱 DEBUG enable_user API: User {token[:8]} before - disabled_at: {user_before.disabled_at}, reason: {user_before.disabled_reason}")
+    
     success = user_store.reactivate_user(token)
     
     if not success:
+        print(f"🚫 DEBUG enable_user API: Failed to enable user {token[:8]}")
         return jsonify({'error': 'User not found'}), 404
     
+    # Check user state after enabling
+    user_after = user_store.get_user(token)
+    print(f"🐱 DEBUG enable_user API: User {token[:8]} after - disabled_at: {user_after.disabled_at}, reason: {user_after.disabled_reason}")
+    print(f"🐱 DEBUG enable_user API: User {token[:8]} is_disabled() returns: {user_after.is_disabled()}")
+    
+    # Verify the user is actually enabled
+    if user_after.is_disabled():
+        print(f"🚫 ERROR: User {token[:8]} should be enabled but is_disabled() still returns True!")
+        return jsonify({'error': 'Failed to enable user - state not updated'}), 500
+    
     # Log admin action
-    event_logger.log_user_action(
-        token=token,
+    structured_logger.log_user_action(
+        user_token=token,
         action='user_enabled',
         details={
             'enabled_by': 'admin'
-        }
+        },
+        admin_user='admin'
     )
     
     return jsonify({
         'success': True,
-        'message': 'User enabled successfully'
+        'message': 'User enabled successfully',
+        'user_state': {
+            'disabled_at': user_after.disabled_at.isoformat() if user_after.disabled_at else None,
+            'disabled_reason': user_after.disabled_reason,
+            'status': getattr(user_after, 'status', 'active').value if hasattr(getattr(user_after, 'status', None), 'value') else str(getattr(user_after, 'status', 'active')),
+            'is_disabled': user_after.is_disabled()
+        }
     })
 
 @admin_bp.route('/users/<token>/rotate', methods=['POST'])
@@ -228,13 +309,14 @@ def rotate_user_token(token: str):
         return jsonify({'error': 'User not found'}), 404
     
     # Log admin action
-    event_logger.log_user_action(
-        token=new_token,
+    structured_logger.log_user_action(
+        user_token=new_token,
         action='token_rotated',
         details={
             'rotated_by': 'admin',
             'old_token': token[:8] + '...'
-        }
+        },
+        admin_user='admin'
     )
     
     return jsonify({
@@ -244,7 +326,7 @@ def rotate_user_token(token: str):
     })
 
 @admin_bp.route('/users/<token>', methods=['DELETE'])
-@require_admin_auth
+@require_admin_auth_or_session
 def delete_user(token: str):
     """Delete a user (automatically disables first if needed)"""
     try:
@@ -257,13 +339,14 @@ def delete_user(token: str):
             user_store.disable_user(token, "Disabled before deletion by admin")
             
             # Log disable action
-            event_logger.log_user_action(
-                token=token,
+            structured_logger.log_user_action(
+                user_token=token,
                 action='user_disabled',
                 details={
                     'disabled_by': 'admin',
                     'reason': 'Disabled before deletion by admin'
-                }
+                },
+                admin_user='admin'
             )
         
         # Now delete the user
@@ -273,12 +356,13 @@ def delete_user(token: str):
             return jsonify({'error': 'Failed to delete user'}), 500
         
         # Log admin action
-        event_logger.log_user_action(
-            token=token,
+        structured_logger.log_user_action(
+            user_token=token,
             action='user_deleted',
             details={
                 'deleted_by': 'admin'
-            }
+            },
+            admin_user='admin'
         )
         
         return jsonify({
@@ -338,6 +422,95 @@ def get_events():
         }
     })
 
+@admin_bp.route('/bulk/migrate-status', methods=['POST'])
+@require_admin_auth
+def bulk_migrate_status():
+    """Migrate all users to add explicit status field"""
+    from ..services.user_store import UserStatus
+    migrated_count = 0
+    
+    print(f"🔄 BULK MIGRATION: Starting migration for {len(user_store.users)} users")
+    
+    for token, user in user_store.users.items():
+        print(f"🔄 BULK MIGRATION: Checking user {token[:8]} - disabled_at: {user.disabled_at}, status: {getattr(user, 'status', 'not set')}")
+        
+        # Always ensure status field exists and is correct
+        if not hasattr(user, 'status') or user.status is None:
+            print(f"🔄 BULK MIGRATION: User {token[:8]} missing status field")
+            if user.disabled_at:
+                user.status = UserStatus.DISABLED
+                print(f"🔄 BULK MIGRATION: Set user {token[:8]} status to DISABLED")
+            else:
+                user.status = UserStatus.ACTIVE
+                print(f"🔄 BULK MIGRATION: Set user {token[:8]} status to ACTIVE")
+            migrated_count += 1
+        else:
+            # Check if status is inconsistent with disabled_at and fix
+            if user.disabled_at and user.status == UserStatus.ACTIVE:
+                print(f"🔄 BULK MIGRATION: User {token[:8]} inconsistent - disabled but status is ACTIVE")
+                user.status = UserStatus.DISABLED
+                migrated_count += 1
+            elif not user.disabled_at and user.status != UserStatus.ACTIVE:
+                print(f"🔄 BULK MIGRATION: User {token[:8]} inconsistent - not disabled but status is {user.status}")
+                user.status = UserStatus.ACTIVE
+                migrated_count += 1
+        
+        # Force immediate flush to Firebase for this user
+        print(f"🔄 BULK MIGRATION: Force flushing user {token[:8]} to Firebase")
+        user_store._flush_to_firebase(token)
+    
+    print(f"🔄 BULK MIGRATION: Completed migration of {migrated_count} users")
+    
+    return jsonify({
+        'success': True,
+        'migrated_users': migrated_count,
+        'total_users': len(user_store.users),
+        'message': f'Migrated {migrated_count} out of {len(user_store.users)} users to explicit status field'
+    })
+
+@admin_bp.route('/debug/user-state/<token>', methods=['GET'])
+@require_admin_auth
+def debug_user_state(token: str):
+    """Debug user state in memory vs Firebase"""
+    print(f"🔍 DEBUG ENDPOINT: Checking user {token[:8]} state")
+    
+    # Get user from memory
+    memory_user = user_store.get_user(token)
+    if not memory_user:
+        return jsonify({'error': 'User not found in memory'}), 404
+    
+    print(f"🔍 DEBUG ENDPOINT: Memory user {token[:8]} status: {getattr(memory_user, 'status', 'not set')}")
+    print(f"🔍 DEBUG ENDPOINT: Memory user {token[:8]} disabled_at: {memory_user.disabled_at}")
+    print(f"🔍 DEBUG ENDPOINT: Memory user {token[:8]} is_disabled(): {memory_user.is_disabled()}")
+    
+    # Get user from Firebase
+    firebase_user_data = None
+    if user_store.firebase_db:
+        try:
+            sanitized_token = user_store._sanitize_firebase_key(token)
+            firebase_user_data = user_store.firebase_db.child('users').child(sanitized_token).get()
+            print(f"🔍 DEBUG ENDPOINT: Firebase user {token[:8]} status: {firebase_user_data.get('status') if firebase_user_data else 'no data'}")
+            print(f"🔍 DEBUG ENDPOINT: Firebase user {token[:8]} disabled_at: {firebase_user_data.get('disabled_at') if firebase_user_data else 'no data'}")
+        except Exception as e:
+            firebase_user_data = f"Error: {e}"
+    
+    return jsonify({
+        'token': token[:8] + '...',
+        'memory_user': {
+            'disabled_at': memory_user.disabled_at.isoformat() if memory_user.disabled_at else None,
+            'disabled_reason': memory_user.disabled_reason,
+            'status': getattr(memory_user, 'status', 'not set').value if hasattr(getattr(memory_user, 'status', None), 'value') else str(getattr(memory_user, 'status', 'not set')),
+            'hasattr_status': hasattr(memory_user, 'status'),
+            'status_type': str(type(getattr(memory_user, 'status', None))),
+            'is_disabled': memory_user.is_disabled(),
+            'to_dict_status': memory_user.to_dict().get('status'),
+            'to_dict_disabled_at': memory_user.to_dict().get('disabled_at'),
+            'to_dict_disabled_reason': memory_user.to_dict().get('disabled_reason')
+        },
+        'firebase_user': firebase_user_data,
+        'in_flush_queue': token in user_store.flush_queue
+    })
+
 @admin_bp.route('/bulk/refresh-quotas', methods=['POST'])
 @require_admin_auth
 def bulk_refresh_quotas():
@@ -362,14 +535,15 @@ def bulk_refresh_quotas():
         affected_users += 1
     
     # Log admin action
-    event_logger.log_user_action(
-        token='admin',
+    structured_logger.log_user_action(
+        user_token='admin',
         action='bulk_refresh_quotas',
         details={
             'performed_by': 'admin',
             'model_family': model_family,
             'affected_users': affected_users
-        }
+        },
+        admin_user='admin'
     )
     
     return jsonify({
