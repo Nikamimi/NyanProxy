@@ -129,6 +129,7 @@ Desktop.ini
 *.old
 *~
 *.orig
+env_backup
 
 # Local configuration
 local_settings.py
