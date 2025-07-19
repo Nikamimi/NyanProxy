@@ -787,29 +787,25 @@
                 </div>
             </div>
             
-            <!-- Usage Summary -->
+            <!-- Cat Stats Summary -->
             <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value" id="totalRequests">-</div>
-                    <div class="stat-label"><span class="cat-emoji">📝</span> Total Requests</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="totalTokens">-</div>
-                    <div class="stat-label"><span class="cat-emoji">🔢</span> Total Tokens</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="totalCost">-</div>
-                    <div class="stat-label"><span class="cat-emoji">💰</span> Total Cost</div>
-                </div>
                 <div class="stat-card">
                     <div class="stat-value" id="pawPrints">-</div>
                     <div class="stat-label"><span class="cat-emoji">🐾</span> Paw Prints</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalTokens">-</div>
+                    <div class="stat-label"><span class="cat-emoji">🪙</span> Treat Tokens</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalCost">-</div>
+                    <div class="stat-label"><span class="cat-emoji">💎</span> Kibble Cost</div>
                 </div>
             </div>
             
             <!-- Model Usage -->
             <div class="model-usage-section">
-                <h4><span class="cat-emoji">🤖</span> Model Usage</h4>
+                <h4><span class="cat-emoji">🍽️</span> Treat Preferences</h4>
                 <div id="modelUsageContent">Loading...</div>
             </div>
         </div>
@@ -1062,14 +1058,13 @@
             catStatsContent.innerHTML = `
                 <p><strong>Mood:</strong> <span class="cat-mood mood-${userStats.cat_stats.mood}">${moodEmoji} ${userStats.cat_stats.mood}</span></p>
                 <p><strong>Happiness Level:</strong> ${userStats.cat_stats.happiness_level}% 😸</p>
-                <p><strong>Favorite Treat:</strong> ${userStats.cat_stats.favorite_treat || 'Still discovering... 🍰'}</p>
+                <p><strong>Favorite Treat:</strong> ${userStats.cat_stats.favorite_treat || 'Still exploring treats... 🐾'}</p>
             `;
             
-            // Update summary stats
-            document.getElementById('totalRequests').textContent = userStats.usage_summary.total_requests.toLocaleString();
+            // Update cat-themed summary stats
+            document.getElementById('pawPrints').textContent = userStats.cat_stats.paw_prints.toLocaleString();
             document.getElementById('totalTokens').textContent = userStats.usage_summary.total_tokens.toLocaleString();
             document.getElementById('totalCost').textContent = '$' + userStats.usage_summary.total_cost_usd.toFixed(4);
-            document.getElementById('pawPrints').textContent = userStats.cat_stats.paw_prints.toLocaleString();
             
             // Update model usage
             displayModelUsage();
@@ -1080,7 +1075,7 @@
             const modelUsageContent = document.getElementById('modelUsageContent');
             
             if (Object.keys(userStats.model_usage).length === 0) {
-                modelUsageContent.innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">No usage data yet. Start making requests to see stats! 🚀</p>';
+                modelUsageContent.innerHTML = '<p style="text-align: center; color: #666; font-style: italic;">No treats tasted yet. Start making requests to see your preferences! 🐱</p>';
                 return;
             }
             

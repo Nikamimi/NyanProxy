@@ -304,6 +304,11 @@
     .btn-sm {
         padding: 4px 8px;
         font-size: 12px;
+        min-width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 </style>
 {% endblock %}
@@ -369,9 +374,14 @@
                             Input: ${{ "%.3f"|format(model.input_cost) }}/1M | 
                             Output: ${{ "%.3f"|format(model.output_cost) }}/1M |
                             Context: {{ "{:,}".format(model.context_length) }}
+                            {% if model.max_input_tokens or model.max_output_tokens %}
+                            <br><strong>Token Limits:</strong> 
+                            {% if model.max_input_tokens %}{{ "{:,}".format(model.max_input_tokens) }} in{% else %}No limit{% endif %} | 
+                            {% if model.max_output_tokens %}{{ "{:,}".format(model.max_output_tokens) }} out{% else %}No limit{% endif %}
+                            {% endif %}
                         </div>
                     </div>
-                    <div class="model-toggle">
+                    <div class="model-actions" style="display: flex; align-items: center; gap: 10px;">
                         <label class="toggle-switch">
                             <input type="checkbox" 
                                    {% if model.is_whitelisted %}checked{% endif %}
@@ -380,6 +390,14 @@
                                    data-provider="{{ provider_key }}">
                             <span class="toggle-slider"></span>
                         </label>
+                        <button class="btn btn-sm btn-secondary" onclick="editModel('{{ model.id }}')" title="Edit Model">
+                            ✏️
+                        </button>
+                        {% if model.can_delete %}
+                        <button class="btn btn-sm btn-danger" onclick="deleteModel('{{ model.id }}')" title="Delete Model">
+                            🗑️
+                        </button>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
@@ -454,6 +472,18 @@
                            min="1" value="4096" placeholder="4096">
                 </div>
                 <div class="form-group">
+                    <label for="max_input_tokens">Max Input Tokens (Optional)</label>
+                    <input type="number" id="max_input_tokens" name="max_input_tokens" 
+                           min="1" placeholder="e.g., 64000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
+                    <label for="max_output_tokens">Max Output Tokens (Optional)</label>
+                    <input type="number" id="max_output_tokens" name="max_output_tokens" 
+                           min="1" placeholder="e.g., 4000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
                     <label>
                         <input type="checkbox" id="supports_streaming" name="supports_streaming" checked>
                         Supports Streaming
@@ -500,6 +530,88 @@
         <div id="customModelsList">
             <div class="loading">Loading custom models...</div>
         </div>
+    </div>
+</div>
+
+<!-- Edit Model Modal -->
+<div id="editModelModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close" onclick="hideModal('editModelModal')">&times;</span>
+        <h3>✏️ Edit Model</h3>
+        <div id="editModelErrors" class="error" style="display: none;"></div>
+        <form id="editModelForm">
+            <input type="hidden" id="edit_model_id" name="model_id">
+            <input type="hidden" id="edit_provider" name="provider">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label for="edit_display_name">Display Name *</label>
+                    <input type="text" id="edit_display_name" name="display_name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit_cat_personality">Cat Personality</label>
+                    <select id="edit_cat_personality" name="cat_personality">
+                        <option value="curious">🙀 Curious</option>
+                        <option value="playful">😸 Playful</option>
+                        <option value="sleepy">😴 Sleepy</option>
+                        <option value="grumpy">😾 Grumpy</option>
+                        <option value="smart">🤓 Smart</option>
+                        <option value="fast">💨 Fast</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit_input_cost_per_1m">Input Cost per 1M tokens ($)</label>
+                    <input type="number" id="edit_input_cost_per_1m" name="input_cost_per_1m" 
+                           step="0.001" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="edit_output_cost_per_1m">Output Cost per 1M tokens ($)</label>
+                    <input type="number" id="edit_output_cost_per_1m" name="output_cost_per_1m" 
+                           step="0.001" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="edit_context_length">Context Length</label>
+                    <input type="number" id="edit_context_length" name="context_length" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="edit_max_input_tokens">Max Input Tokens (Optional)</label>
+                    <input type="number" id="edit_max_input_tokens" name="max_input_tokens" 
+                           min="1" placeholder="e.g., 64000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit_max_output_tokens">Max Output Tokens (Optional)</label>
+                    <input type="number" id="edit_max_output_tokens" name="max_output_tokens" 
+                           min="1" placeholder="e.g., 4000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit_supports_streaming" name="supports_streaming">
+                        Supports Streaming
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit_supports_function_calling" name="supports_function_calling">
+                        Supports Function Calling
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit_is_premium" name="is_premium">
+                        Premium Model
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="edit_description">Description</label>
+                <textarea id="edit_description" name="description" rows="3"></textarea>
+            </div>
+            <div style="text-align: right; margin-top: 15px;">
+                <button type="submit" class="btn btn-primary">Update Model</button>
+                <button type="button" class="btn btn-secondary" onclick="hideModal('editModelModal')">Cancel</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -787,6 +899,7 @@ function renderCustomModels(models) {
                         ${model.is_premium ? '<span class="premium-badge">PREMIUM</span>' : ''}
                     </div>
                     <div class="custom-model-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="editCustomModel('${model.model_id}')">Edit</button>
                         <button class="btn btn-sm btn-danger" onclick="deleteCustomModel('${model.model_id}')">Delete</button>
                     </div>
                 </div>
@@ -796,6 +909,7 @@ function renderCustomModels(models) {
                     <strong>Description:</strong> ${model.description}<br>
                     <strong>Costs:</strong> $${model.input_cost_per_1m.toFixed(3)}/1M in, $${model.output_cost_per_1m.toFixed(3)}/1M out<br>
                     <strong>Context:</strong> ${model.context_length.toLocaleString()} tokens<br>
+                    <strong>Token Limits:</strong> ${model.max_input_tokens ? model.max_input_tokens.toLocaleString() + ' in' : 'No limit'}, ${model.max_output_tokens ? model.max_output_tokens.toLocaleString() + ' out' : 'No limit'}<br>
                     <strong>Status:</strong> ${model.is_whitelisted ? '<span style="color: green;">Enabled</span>' : '<span style="color: red;">Disabled</span>'}
                 </div>
             </div>
@@ -822,6 +936,208 @@ function deleteCustomModel(modelId) {
             showNotification(result.message, 'success');
             loadCustomModels(); // Refresh the list
             // Also refresh the main page after a short delay
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(result.error || 'Failed to delete model', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+    });
+}
+
+function editCustomModel(modelId) {
+    // Get model data first
+    fetch('/admin/model-families/api/models/custom')
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                const model = result.models.find(m => m.model_id === modelId);
+                if (model) {
+                    populateEditForm(model);
+                    showModal('editModelModal');
+                } else {
+                    showNotification('Model not found', 'error');
+                }
+            } else {
+                showNotification('Failed to load model data', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Network error occurred', 'error');
+        });
+}
+
+function populateEditForm(model) {
+    document.getElementById('edit_model_id').value = model.model_id;
+    document.getElementById('edit_display_name').value = model.display_name;
+    document.getElementById('edit_description').value = model.description;
+    document.getElementById('edit_cat_personality').value = model.cat_personality;
+    document.getElementById('edit_input_cost_per_1m').value = model.input_cost_per_1m;
+    document.getElementById('edit_output_cost_per_1m').value = model.output_cost_per_1m;
+    document.getElementById('edit_context_length').value = model.context_length;
+    document.getElementById('edit_max_input_tokens').value = model.max_input_tokens || '';
+    document.getElementById('edit_max_output_tokens').value = model.max_output_tokens || '';
+    document.getElementById('edit_supports_streaming').checked = model.supports_streaming;
+    document.getElementById('edit_supports_function_calling').checked = model.supports_function_calling;
+    document.getElementById('edit_is_premium').checked = model.is_premium;
+    document.getElementById('editModelErrors').style.display = 'none';
+}
+
+// Handle edit form submission
+document.getElementById('editModelForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {};
+    
+    // Convert form data to object
+    for (let [key, value] of formData.entries()) {
+        if (key.startsWith('supports_') || key.startsWith('is_')) {
+            data[key] = true; // Checkbox is checked
+        } else {
+            data[key] = value;
+        }
+    }
+    
+    // Set unchecked checkboxes to false
+    const checkboxes = ['supports_streaming', 'supports_function_calling', 'is_premium'];
+    checkboxes.forEach(name => {
+        if (!(name in data)) {
+            data[name] = false;
+        }
+    });
+    
+    const modelId = data.model_id;
+    delete data.model_id; // Remove from data since it's in the URL
+    
+    console.log('🔧 Updating model:', modelId, 'with data:', data);
+    
+    fetch(`/admin/model-families/api/models/${modelId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            hideModal('editModelModal');
+            showNotification(result.message, 'success');
+            loadCustomModels(); // Refresh the list
+            // Also refresh the main page after a short delay
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            const errorDiv = document.getElementById('editModelErrors');
+            if (result.field_errors) {
+                let errorText = 'Validation errors:';
+                for (let field in result.field_errors) {
+                    errorText += `\n${field}: ${result.field_errors[field]}`;
+                }
+                errorDiv.textContent = errorText;
+            } else {
+                errorDiv.textContent = 'Error: ' + result.error;
+            }
+            errorDiv.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        const errorDiv = document.getElementById('editModelErrors');
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+});
+
+// Functions for main model list edit/delete  
+function editModel(modelId) {
+    console.log('🐱 Edit model clicked:', modelId);
+    
+    // Check if modal exists
+    const modal = document.getElementById('editModelModal');
+    if (!modal) {
+        console.error('❌ Edit modal not found in DOM');
+        alert('Edit modal not found. Please refresh the page.');
+        return;
+    }
+    
+    // Simple approach - fetch model info directly
+    fetch(`/admin/model-families/api/model-info/${modelId}`)
+        .then(response => {
+            console.log('📡 API Response status:', response.status);
+            return response.json();
+        })
+        .then(result => {
+            console.log('📦 API Result:', result);
+            if (result.success) {
+                populateEditFormFromAPI(result.model);
+                showModal('editModelModal');
+                console.log('✅ Modal should be open now');
+            } else {
+                console.error('❌ API Error:', result.error);
+                alert('Failed to load model data: ' + result.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Network Error:', error);
+            alert('Network error: ' + error.message);
+        });
+}
+
+function populateEditFormFromCustom(model) {
+    document.getElementById('edit_model_id').value = model.model_id;
+    document.getElementById('edit_provider').value = model.provider;
+    document.getElementById('edit_display_name').value = model.display_name;
+    document.getElementById('edit_description').value = model.description;
+    document.getElementById('edit_cat_personality').value = model.cat_personality;
+    document.getElementById('edit_input_cost_per_1m').value = model.input_cost_per_1m;
+    document.getElementById('edit_output_cost_per_1m').value = model.output_cost_per_1m;
+    document.getElementById('edit_context_length').value = model.context_length;
+    document.getElementById('edit_max_input_tokens').value = model.max_input_tokens || '';
+    document.getElementById('edit_max_output_tokens').value = model.max_output_tokens || '';
+    document.getElementById('edit_supports_streaming').checked = model.supports_streaming;
+    document.getElementById('edit_supports_function_calling').checked = model.supports_function_calling;
+    document.getElementById('edit_is_premium').checked = model.is_premium;
+    document.getElementById('editModelErrors').style.display = 'none';
+}
+
+function populateEditFormFromAPI(model) {
+    document.getElementById('edit_model_id').value = model.model_id;
+    document.getElementById('edit_provider').value = model.provider;
+    document.getElementById('edit_display_name').value = model.display_name;
+    document.getElementById('edit_description').value = model.description;
+    document.getElementById('edit_cat_personality').value = model.cat_personality;
+    document.getElementById('edit_input_cost_per_1m').value = model.input_cost_per_1m;
+    document.getElementById('edit_output_cost_per_1m').value = model.output_cost_per_1m;
+    document.getElementById('edit_context_length').value = model.context_length;
+    document.getElementById('edit_max_input_tokens').value = model.max_input_tokens || '';
+    document.getElementById('edit_max_output_tokens').value = model.max_output_tokens || '';
+    document.getElementById('edit_supports_streaming').checked = model.supports_streaming;
+    document.getElementById('edit_supports_function_calling').checked = model.supports_function_calling;
+    document.getElementById('edit_is_premium').checked = model.is_premium;
+    document.getElementById('editModelErrors').style.display = 'none';
+}
+
+function deleteModel(modelId) {
+    if (!confirm('Are you sure you want to delete this model? This action cannot be undone.')) {
+        return;
+    }
+    
+    fetch(`/admin/model-families/api/models/${modelId}`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showNotification(result.message, 'success');
+            // Refresh the page after a short delay
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification(result.error || 'Failed to delete model', 'error');

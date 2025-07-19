@@ -642,7 +642,10 @@ def get_my_user_stats():
             'mood': user.mood,
             'favorite_treat': user.favorite_treat,
             'paw_prints': user.paw_prints,
-            'happiness_level': min(100, max(0, 100 - user.suspicious_activity_count * 10 + user.paw_prints * 2))
+            'happiness_level': user.happiness,
+            'suspicious_events': user.suspicious_events,
+            'token_violations': user.token_violations,
+            'rate_limit_violations': user.rate_limit_violations
         },
         'limits': {
             'token_limits': user.token_limits,

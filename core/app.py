@@ -5,6 +5,7 @@ import json
 import random
 import time
 import threading
+import hashlib
 from typing import Dict, List
 from datetime import datetime, timedelta
 from .health_checker import health_manager, HealthResult
@@ -493,6 +494,74 @@ def openai_chat_completions():
         metrics.track_request('chat_completions', time.time() - start_time, error=True)
         return jsonify({"error": {"message": f"Model '{model}' is not whitelisted for use", "type": "model_not_allowed"}}), 403
     
+    # Validate token limits
+    model_info = model_manager.get_model_info(model)
+    if model_info and (model_info.max_input_tokens or model_info.max_output_tokens):
+        print(f"🔍 Token validation for model {model}: max_input={model_info.max_input_tokens}, max_output={model_info.max_output_tokens}")
+        
+        # Count input tokens using the full request for more accurate counting
+        input_tokens = 0
+        try:
+            token_result = unified_tokenizer.count_tokens(request_json, 'openai', model)
+            print(f"🔍 Raw unified tokenizer result: {token_result}")
+            # Check for both possible key names
+            input_tokens = token_result.get('input_tokens', 0) or token_result.get('prompt_tokens', 0)
+            print(f"📊 Unified tokenizer result: {input_tokens} tokens")
+        except Exception as token_error:
+            print(f"⚠️ Unified tokenizer failed: {token_error}")
+            import traceback
+            traceback.print_exc()
+        
+        # If unified tokenizer returned 0, use basic fallback
+        if input_tokens == 0:
+            print(f"⚠️ Unified tokenizer returned 0, using character estimation...")
+            messages = request_json.get('messages', [])
+            total_chars = sum(len(str(msg.get('content', ''))) for msg in messages)
+            input_tokens = max(1, total_chars // 4)  # Conservative 4 chars per token
+            print(f"📊 Character fallback: {input_tokens} tokens (from {total_chars} chars)")
+        
+        print(f"🎯 Final input token count: {input_tokens}")
+        
+        # Check output tokens limit (from max_completion_tokens or max_tokens)
+        max_completion_tokens = request_json.get('max_completion_tokens') or request_json.get('max_tokens')
+        print(f"📤 Requested output tokens: {max_completion_tokens}")
+        
+        # Validate token limits
+        is_valid, error_message = model_info.validate_token_limits(input_tokens, max_completion_tokens)
+        print(f"✅ Validation result: {is_valid}, message: {error_message}")
+        
+        if not is_valid:
+            print(f"❌ Token limit exceeded, returning error")
+            
+            # Log token limit violation
+            if hasattr(g, 'auth_data') and g.auth_data.get("type") == "user_token":
+                user_token = g.auth_data["token"]
+                user = g.auth_data["user"]
+                ip_hash = hashlib.sha256(g.auth_data["ip"].encode()).hexdigest()
+                user_agent = request.headers.get('User-Agent', '')
+                
+                # Record token violation for happiness tracking
+                user.record_token_violation()
+                
+                # Log the violation event
+                structured_logger.log_user_action(
+                    user_token=user_token,
+                    action='token_limit_exceeded',
+                    details={
+                        'model': model,
+                        'input_tokens': input_tokens,
+                        'max_input_tokens': model_info.max_input_tokens,
+                        'requested_output_tokens': max_completion_tokens,
+                        'max_output_tokens': model_info.max_output_tokens,
+                        'error_message': error_message,
+                        'ip_hash': ip_hash,
+                        'user_agent': user_agent
+                    }
+                )
+            
+            metrics.track_request('chat_completions', time.time() - start_time, error=True)
+            return jsonify({"error": {"message": error_message, "type": "token_limit_exceeded"}}), 400
+    
     for attempt in range(max_retries):
         api_key = key_manager.get_api_key('openai')
         if not api_key:
@@ -594,15 +663,22 @@ def openai_chat_completions():
             
             # Track token usage for authenticated users
             if tokens and hasattr(g, 'auth_data') and g.auth_data.get('type') == 'user_token':
-                track_token_usage('openai', tokens.get('prompt_tokens', 0), tokens.get('completion_tokens', 0))
-                
-                # Track model usage and get cost
+                # Track model usage and get cost first
                 model_cost = model_manager.track_model_usage(
                     user_token=g.auth_data['token'],
                     model_id=model,
                     input_tokens=tokens.get('prompt_tokens', 0),
                     output_tokens=tokens.get('completion_tokens', 0),
                     success=response.status_code == 200
+                )
+                
+                # Track with cost information
+                track_token_usage(
+                    model, 
+                    tokens.get('prompt_tokens', 0), 
+                    tokens.get('completion_tokens', 0), 
+                    cost=model_cost or 0.0, 
+                    response_time_ms=response_time * 1000
                 )
                 
                 # Log completion event
@@ -941,6 +1017,41 @@ def anthropic_messages():
     if not has_quota:
         return jsonify({"error": quota_error}), 429
     
+    # Validate model is whitelisted
+    request_json = request.get_json() if request else {}
+    model = request_json.get('model', 'claude-3-haiku-20240307')
+    if not model_manager.is_model_whitelisted(AIProvider.ANTHROPIC, model):
+        metrics.track_request('chat_completions', time.time() - start_time, error=True)
+        return jsonify({"error": {"message": f"Model '{model}' is not whitelisted for use", "type": "model_not_allowed"}}), 403
+    
+    # Validate token limits
+    model_info = model_manager.get_model_info(model)
+    if model_info and (model_info.max_input_tokens or model_info.max_output_tokens):
+        # Count input tokens using the full request for more accurate counting
+        input_tokens = 0
+        try:
+            token_result = unified_tokenizer.count_tokens(request_json, 'anthropic')
+            print(f"🔍 Raw unified tokenizer result (Anthropic): {token_result}")
+            # Check for both possible key names
+            input_tokens = token_result.get('input_tokens', 0) or token_result.get('prompt_tokens', 0)
+            print(f"📊 Unified tokenizer result: {input_tokens} tokens")
+        except Exception as token_error:
+            print(f"⚠️ Unified tokenizer failed: {token_error}")
+            # Fallback to character estimation for Anthropic
+            messages = request_json.get('messages', [])
+            total_chars = sum(len(str(msg.get('content', ''))) for msg in messages)
+            input_tokens = max(1, total_chars // 4)
+            print(f"📊 Character fallback for Anthropic: {input_tokens} tokens")
+        
+        # Check output tokens limit (from max_tokens)
+        max_completion_tokens = request_json.get('max_tokens')
+        
+        # Validate token limits
+        is_valid, error_message = model_info.validate_token_limits(input_tokens, max_completion_tokens)
+        if not is_valid:
+            metrics.track_request('chat_completions', time.time() - start_time, error=True)
+            return jsonify({"error": {"message": error_message, "type": "token_limit_exceeded"}}), 400
+    
     for attempt in range(max_retries):
         api_key = key_manager.get_api_key('anthropic')
         if not api_key:
@@ -1059,7 +1170,23 @@ def anthropic_messages():
             
             # Track token usage for authenticated users
             if tokens and hasattr(g, 'auth_data') and g.auth_data.get('type') == 'user_token':
-                track_token_usage('anthropic', tokens.get('prompt_tokens', 0), tokens.get('completion_tokens', 0))
+                # Track model usage and get cost first
+                model_cost = model_manager.track_model_usage(
+                    user_token=g.auth_data['token'],
+                    model_id=model,
+                    input_tokens=tokens.get('prompt_tokens', 0),
+                    output_tokens=tokens.get('completion_tokens', 0),
+                    success=response.status_code == 200
+                )
+                
+                # Track with cost information
+                track_token_usage(
+                    model, 
+                    tokens.get('prompt_tokens', 0), 
+                    tokens.get('completion_tokens', 0), 
+                    cost=model_cost or 0.0, 
+                    response_time_ms=response_time * 1000
+                )
                 
                 # Log completion event
                 event_logger.log_chat_completion(

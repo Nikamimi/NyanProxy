@@ -29,6 +29,16 @@ def model_families_dashboard():
         all_models = model_manager.get_all_models(provider)
         whitelisted_models = model_manager.get_whitelisted_models(provider)
         
+        # Define anchor default models that can never be deleted
+        anchor_defaults = {
+            "gpt-4o", "claude-3-5-sonnet-20241022"
+        }
+        
+        # All default models (including ones that can be deleted)
+        default_model_ids = {
+            "gpt-4o", "claude-3-5-sonnet-20241022"
+        }
+        
         providers_data[provider.value] = {
             'name': provider.value.title(),
             'all_models': [
@@ -42,7 +52,13 @@ def model_families_dashboard():
                     'context_length': model.context_length,
                     'is_premium': model.is_premium,
                     'cat_emoji': model.get_cat_emoji(),
-                    'cat_personality': model.cat_personality
+                    'cat_personality': model.cat_personality,
+                    'max_input_tokens': model.max_input_tokens,
+                    'max_output_tokens': model.max_output_tokens,
+                    'is_default': model.model_id in default_model_ids,
+                    'can_delete': model.model_id not in anchor_defaults,
+                    'supports_streaming': model.supports_streaming,
+                    'supports_function_calling': model.supports_function_calling
                 }
                 for model in all_models
             ],
@@ -275,41 +291,60 @@ def add_custom_model():
             supports_streaming=bool(data.get('supports_streaming', True)),
             supports_function_calling=bool(data.get('supports_function_calling', False)),
             is_premium=bool(data.get('is_premium', False)),
-            cat_personality=data.get('cat_personality', 'curious')
+            cat_personality=data.get('cat_personality', 'curious'),
+            max_input_tokens=int(data['max_input_tokens']) if data.get('max_input_tokens') else None,
+            max_output_tokens=int(data['max_output_tokens']) if data.get('max_output_tokens') else None
         )
         
         # Add the model
         auto_whitelist = data.get('auto_whitelist', True)
-        success = model_manager.add_custom_model(model_info, auto_whitelist)
+        print(f"🔥 API: Attempting to add model {model_info.model_id} to provider {model_info.provider.value}")
         
-        if success:
-            # Log admin action asynchronously (non-blocking)
-            import threading
-            def background_log():
-                structured_logger.log_user_action(
-                    user_token='admin',
-                    action='custom_model_added',
-                    details={
-                        'model_id': model_info.model_id,
-                        'provider': model_info.provider.value,
-                        'display_name': model_info.display_name,
-                        'auto_whitelisted': auto_whitelist
-                    },
-                    admin_user='admin'
-                )
+        try:
+            success = model_manager.add_custom_model(model_info, auto_whitelist)
+            print(f"🔥 API: add_custom_model returned: {success}")
             
-            log_thread = threading.Thread(target=background_log)
-            log_thread.daemon = True
-            log_thread.start()
-            
-            return jsonify({
-                'success': True,
-                'message': f'Model {model_info.display_name} added successfully',
-                'model_id': model_info.model_id,
-                'whitelisted': auto_whitelist
-            })
-        else:
-            return jsonify({'error': 'Failed to add model (already exists?)'}), 400
+            if success:
+                # Log admin action asynchronously (non-blocking)
+                import threading
+                def background_log():
+                    try:
+                        structured_logger.log_user_action(
+                            user_token='admin',
+                            action='custom_model_added',
+                            details={
+                                'model_id': model_info.model_id,
+                                'provider': model_info.provider.value,
+                                'display_name': model_info.display_name,
+                                'auto_whitelisted': auto_whitelist
+                            },
+                            admin_user='admin'
+                        )
+                    except Exception as log_error:
+                        print(f"⚠️ Logging error (non-critical): {log_error}")
+                
+                log_thread = threading.Thread(target=background_log)
+                log_thread.daemon = True
+                log_thread.start()
+                
+                response = {
+                    'success': True,
+                    'message': f'Model {model_info.display_name} added successfully',
+                    'model_id': model_info.model_id,
+                    'whitelisted': auto_whitelist
+                }
+                print(f"✅ API: Returning success response: {response}")
+                return jsonify(response)
+            else:
+                error_response = {'error': 'Failed to add model (already exists or save failed)'}
+                print(f"❌ API: Returning error response: {error_response}")
+                return jsonify(error_response), 400
+        except Exception as add_error:
+            error_response = {'error': f'Error adding model: {str(add_error)}'}
+            print(f"❌ API: Exception in add_custom_model: {add_error}")
+            import traceback
+            traceback.print_exc()
+            return jsonify(error_response), 500
             
     except ValueError as e:
         return jsonify({'error': f'Invalid data: {str(e)}'}), 400
@@ -325,14 +360,8 @@ def update_custom_model(model_id: str):
     if not data:
         return jsonify({'error': 'No data provided'}), 400
     
-    # Remove model_id from validation data to prevent uniqueness check
-    validation_data = data.copy()
-    validation_data.pop('model_id', None)
-    
-    # Validate the model data (excluding model_id)
-    errors = model_manager.validate_model_data(validation_data)
-    if errors:
-        return jsonify({'error': 'Validation failed', 'field_errors': errors}), 400
+    # For updates, we don't need full validation - just update the provided fields
+    # Skip validation for model updates since we're only updating specific fields
     
     try:
         # Convert numeric fields
@@ -340,6 +369,11 @@ def update_custom_model(model_id: str):
         for field in ['input_cost_per_1m', 'output_cost_per_1m', 'context_length']:
             if field in data:
                 updates[field] = float(data[field]) if field != 'context_length' else int(data[field])
+        
+        # Convert token limit fields (can be None)
+        for field in ['max_input_tokens', 'max_output_tokens']:
+            if field in data:
+                updates[field] = int(data[field]) if data[field] and data[field] != '' else None
         
         # Convert boolean fields
         for field in ['supports_streaming', 'supports_function_calling', 'is_premium']:
@@ -378,8 +412,17 @@ def update_custom_model(model_id: str):
 @model_families_bp.route('/api/models/<model_id>', methods=['DELETE'])
 @require_admin_session
 def delete_custom_model(model_id: str):
-    """Delete a custom model"""
+    """Delete a model (custom or non-anchor default)"""
     try:
+        # Define anchor defaults that cannot be deleted
+        anchor_defaults = {
+            "gpt-4o", "claude-3-5-sonnet-20241022"
+        }
+        
+        # Prevent deletion of anchor defaults
+        if model_id in anchor_defaults:
+            return jsonify({'error': 'Cannot delete anchor default models'}), 403
+        
         # Get model info for logging
         model_info = model_manager.get_model_info(model_id)
         if not model_info:
@@ -410,6 +453,39 @@ def delete_custom_model(model_id: str):
     except Exception as e:
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
+@model_families_bp.route('/api/model-info/<model_id>')
+@require_admin_session  
+def get_model_info_api(model_id: str):
+    """Get detailed info for a specific model"""
+    try:
+        model_info = model_manager.get_model_info(model_id)
+        if not model_info:
+            return jsonify({'success': False, 'error': 'Model not found'}), 404
+        
+        model_dict = {
+            'model_id': model_info.model_id,
+            'provider': model_info.provider.value,
+            'display_name': model_info.display_name,
+            'description': model_info.description,
+            'input_cost_per_1m': model_info.input_cost_per_1m,
+            'output_cost_per_1m': model_info.output_cost_per_1m,
+            'context_length': model_info.context_length,
+            'supports_streaming': model_info.supports_streaming,
+            'supports_function_calling': model_info.supports_function_calling,
+            'is_premium': model_info.is_premium,
+            'cat_personality': model_info.cat_personality,
+            'max_input_tokens': model_info.max_input_tokens,
+            'max_output_tokens': model_info.max_output_tokens
+        }
+        
+        return jsonify({
+            'success': True,
+            'model': model_dict
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'}), 500
+
 @model_families_bp.route('/api/models/custom')
 @require_admin_session
 def get_custom_models():
@@ -432,6 +508,8 @@ def get_custom_models():
                 'is_premium': model.is_premium,
                 'cat_personality': model.cat_personality,
                 'cat_emoji': model.get_cat_emoji(),
+                'max_input_tokens': model.max_input_tokens,
+                'max_output_tokens': model.max_output_tokens,
                 'is_whitelisted': model_manager.is_model_whitelisted(model.provider, model.model_id)
             }
             models_data.append(model_dict)
@@ -440,6 +518,21 @@ def get_custom_models():
             'success': True,
             'models': models_data,
             'count': len(models_data)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@model_families_bp.route('/api/global-totals')
+@require_admin_session
+def get_global_totals():
+    """Get global totals for all models across the system"""
+    try:
+        global_totals = model_manager.get_global_totals()
+        
+        return jsonify({
+            'success': True,
+            'totals': global_totals
         })
         
     except Exception as e:

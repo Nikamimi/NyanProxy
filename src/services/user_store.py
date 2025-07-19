@@ -169,7 +169,7 @@ class IPUsage:
             'last_used': self.last_used.isoformat() if self.last_used else None,
             'total_requests': self.total_requests,
             'total_tokens': self.total_tokens,
-            'models_used': self.models_used,
+            'models_used': {k.replace('.', '_DOT_').replace('#', '_HASH_').replace('$', '_DOLLAR_').replace('[', '_LBRACKET_').replace(']', '_RBRACKET_').replace('/', '_SLASH_'): v for k, v in self.models_used.items()},
             'user_agent': self.user_agent,
             'is_suspicious': self.is_suspicious
         }
@@ -183,7 +183,7 @@ class IPUsage:
             last_used=datetime.fromisoformat(data['last_used']) if data.get('last_used') else None,
             total_requests=data.get('total_requests', 0),
             total_tokens=data.get('total_tokens', 0),
-            models_used=data.get('models_used', {}),
+            models_used={k.replace('_DOT_', '.').replace('_HASH_', '#').replace('_DOLLAR_', '$').replace('_LBRACKET_', '[').replace('_RBRACKET_', ']').replace('_SLASH_', '/'): v for k, v in data.get('models_used', {}).items()},
             user_agent=data.get('user_agent'),
             is_suspicious=data.get('is_suspicious', False)
         )
@@ -224,6 +224,12 @@ class User:
     favorite_treat: Optional[str] = None
     paw_prints: int = 0  # number of successful requests
     
+    # Happiness/Merit System
+    happiness: int = 100  # 0-100 scale
+    suspicious_events: int = 0  # counter for suspicious activities
+    token_violations: int = 0  # token limit violations
+    rate_limit_violations: int = 0  # rate limit violations
+    
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now()
@@ -251,6 +257,16 @@ class User:
             }
         if self.preferred_models is None:
             self.preferred_models = {}
+        
+        # Initialize happiness/merit system fields for backward compatibility
+        if not hasattr(self, 'happiness'):
+            self.happiness = 100
+        if not hasattr(self, 'suspicious_events'):
+            self.suspicious_events = 0
+        if not hasattr(self, 'token_violations'):
+            self.token_violations = 0
+        if not hasattr(self, 'rate_limit_violations'):
+            self.rate_limit_violations = 0
         
         # CRITICAL: Ensure status field is always properly set
         if not hasattr(self, 'status') or self.status is None:
@@ -300,7 +316,45 @@ class User:
         return max(0, self.prompt_limits - total_prompts)
     
     def get_token_usage(self, model_family: str) -> TokenCount:
-        return self.token_counts.get(model_family, TokenCount())
+        """Get aggregated token usage for a model family"""
+        # If we have direct family tracking, use it
+        if model_family in self.token_counts:
+            return self.token_counts[model_family]
+        
+        # Otherwise, aggregate usage from all models in this family
+        aggregated = TokenCount()
+        
+        # Define which models belong to which families
+        family_patterns = {
+            'openai': ['gpt', 'o1', 'o3'],
+            'anthropic': ['claude'],
+            'google': ['gemini'],
+            'mistral': ['mistral'],
+            'groq': ['groq'],
+            'cohere': ['cohere']
+        }
+        
+        patterns = family_patterns.get(model_family, [])
+        
+        for model_name, token_count in self.token_counts.items():
+            # Check if this model belongs to the requested family
+            model_lower = model_name.lower()
+            if any(pattern in model_lower for pattern in patterns):
+                aggregated.input += token_count.input
+                aggregated.output += token_count.output
+                aggregated.total += token_count.total
+                aggregated.requests += token_count.requests
+                aggregated.cost_usd += token_count.cost_usd
+                
+                # Update first/last request times
+                if token_count.first_request:
+                    if not aggregated.first_request or token_count.first_request < aggregated.first_request:
+                        aggregated.first_request = token_count.first_request
+                if token_count.last_request:
+                    if not aggregated.last_request or token_count.last_request > aggregated.last_request:
+                        aggregated.last_request = token_count.last_request
+        
+        return aggregated
     
     def get_token_limit(self, model_family: str) -> int:
         return self.token_limits.get(model_family, 100000)
@@ -358,15 +412,12 @@ class User:
         # Update mood based on usage patterns
         self.update_mood()
         
-        # Update favorite treat based on most used model
+        # Update favorite treat based on most used model (now showing actual model names)
         most_used_model = max(self.preferred_models.items(), key=lambda x: x[1], default=('', 0))[0]
-        treat_map = {
-            'openai': 'Fish treats',
-            'anthropic': 'Catnip',
-            'google': 'Tuna',
-            'mistral': 'Chicken bits'
-        }
-        self.favorite_treat = treat_map.get(most_used_model, 'Generic cat treats')
+        if most_used_model:
+            self.favorite_treat = most_used_model
+        else:
+            self.favorite_treat = 'Still exploring treats... 🐾'
     
     def get_or_create_ip_usage(self, ip_hash: str) -> IPUsage:
         """Get or create IP usage tracking for a given IP hash"""
@@ -528,6 +579,59 @@ class User:
         if self.suspicious_activity_count > 5:
             self.mood = "grumpy"
     
+    def record_token_violation(self):
+        """Record a token limit violation and decrease happiness"""
+        self.token_violations += 1
+        self.suspicious_events += 1
+        self.happiness = max(0, self.happiness - 10)
+        self._update_happiness_mood()
+    
+    def record_rate_limit_violation(self):
+        """Record a rate limit violation and decrease happiness"""
+        self.rate_limit_violations += 1
+        self.suspicious_events += 1
+        self.happiness = max(0, self.happiness - 10)
+        self._update_happiness_mood()
+    
+    def record_successful_prompt(self):
+        """Record a successful prompt and increase happiness slightly"""
+        self.happiness = min(100, self.happiness + 1)
+        self._update_happiness_mood()
+    
+    def _update_happiness_mood(self):
+        """Update mood based on happiness level"""
+        if self.happiness >= 80:
+            self.mood = "happy"
+        elif self.happiness >= 60:
+            self.mood = "playful"
+        elif self.happiness >= 40:
+            self.mood = "sleepy"
+        else:
+            self.mood = "grumpy"
+    
+    def get_happiness_percentage(self) -> int:
+        """Get happiness as a percentage (0-100)"""
+        return self.happiness
+    
+    def get_happiness_emoji(self) -> str:
+        """Get emoji representing current happiness level"""
+        if self.happiness >= 80:
+            return "😸"  # grinning cat
+        elif self.happiness >= 60:
+            return "😺"  # smiling cat
+        elif self.happiness >= 40:
+            return "😼"  # cat with wry smile
+        else:
+            return "🙀"  # weary cat
+    
+    def _sanitize_model_key(self, key: str) -> str:
+        """Sanitize model name for Firebase (replace invalid characters)"""
+        return key.replace('.', '_DOT_').replace('#', '_HASH_').replace('$', '_DOLLAR_').replace('[', '_LBRACKET_').replace(']', '_RBRACKET_').replace('/', '_SLASH_')
+    
+    def _unsanitize_model_key(self, key: str) -> str:
+        """Reverse sanitization of model name from Firebase"""
+        return key.replace('_DOT_', '.').replace('_HASH_', '#').replace('_DOLLAR_', '$').replace('_LBRACKET_', '[').replace('_RBRACKET_', ']').replace('_SLASH_', '/')
+    
     def to_dict(self) -> dict:
         return {
             'token': self.token,
@@ -539,7 +643,7 @@ class User:
             'status': self.status.value if hasattr(self, 'status') and self.status else ('disabled' if self.disabled_at else 'active'),
             'ip': self.ip,
             'ip_usage': [usage.to_dict() for usage in self.ip_usage],
-            'token_counts': {k: v.to_dict() for k, v in self.token_counts.items()},
+            'token_counts': {self._sanitize_model_key(k): v.to_dict() for k, v in self.token_counts.items()},
             'token_limits': self.token_limits,
             'token_refresh': self.token_refresh,
             'nickname': self.nickname,
@@ -552,7 +656,7 @@ class User:
             'rate_limit_hits': self.rate_limit_hits,
             'last_rate_limit': self.last_rate_limit.isoformat() if self.last_rate_limit else None,
             'suspicious_activity_count': self.suspicious_activity_count,
-            'preferred_models': self.preferred_models,
+            'preferred_models': {self._sanitize_model_key(k): v for k, v in self.preferred_models.items()},
             'average_tokens_per_request': self.average_tokens_per_request,
             'peak_requests_per_hour': self.peak_requests_per_hour,
             'favorite_user_agent': self.favorite_user_agent,
@@ -561,7 +665,13 @@ class User:
             'mood': self.mood,
             'mood_emoji': self.get_mood_emoji(),
             'favorite_treat': self.favorite_treat,
-            'paw_prints': self.paw_prints
+            'paw_prints': self.paw_prints,
+            
+            # Happiness/Merit System
+            'happiness': self.happiness,
+            'suspicious_events': self.suspicious_events,
+            'token_violations': self.token_violations,
+            'rate_limit_violations': self.rate_limit_violations
         }
     
     @classmethod
@@ -600,20 +710,23 @@ class User:
         
         # Check if this is old schema (flat numbers) or new schema (dict objects)
         for k, v in raw_token_counts.items():
+            # Unsanitize the key (convert Firebase-safe key back to original model name)
+            original_key = k.replace('_DOT_', '.').replace('_HASH_', '#').replace('_DOLLAR_', '$').replace('_LBRACKET_', '[').replace('_RBRACKET_', ']').replace('_SLASH_', '/')
+            
             if isinstance(v, dict):
                 if 'input' in v and 'output' in v:
                     # New format with detailed token tracking
-                    token_counts[k] = TokenCount.from_dict(v)
+                    token_counts[original_key] = TokenCount.from_dict(v)
                 else:
                     # Old format without detailed tracking
-                    token_counts[k] = TokenCount(
+                    token_counts[original_key] = TokenCount(
                         total=v.get('total', 0),
                         requests=v.get('requests', 0),
                         cost_usd=v.get('cost_usd', 0.0)
                     )
             elif isinstance(v, (int, float)):
                 # Very old format - just a number representing total tokens
-                token_counts[k] = TokenCount(total=int(v))
+                token_counts[original_key] = TokenCount(total=int(v))
         
         # Handle backward compatibility for legacy promptCount and ipUsage
         if 'promptCount' in data and 'ip_usage' not in data:
@@ -653,7 +766,7 @@ class User:
             rate_limit_hits=data.get('rate_limit_hits', 0),
             last_rate_limit=datetime.fromisoformat(data['last_rate_limit']) if data.get('last_rate_limit') else None,
             suspicious_activity_count=data.get('suspicious_activity_count', 0),
-            preferred_models=data.get('preferred_models', {}),
+            preferred_models={k.replace('_DOT_', '.').replace('_HASH_', '#').replace('_DOLLAR_', '$').replace('_LBRACKET_', '[').replace('_RBRACKET_', ']').replace('_SLASH_', '/'): v for k, v in data.get('preferred_models', {}).items()},
             average_tokens_per_request=data.get('average_tokens_per_request', 0.0),
             peak_requests_per_hour=data.get('peak_requests_per_hour', 0),
             favorite_user_agent=data.get('favorite_user_agent'),
@@ -661,7 +774,13 @@ class User:
             # Cat-themed fields
             mood=data.get('mood', 'happy'),
             favorite_treat=data.get('favorite_treat'),
-            paw_prints=data.get('paw_prints', 0)
+            paw_prints=data.get('paw_prints', 0),
+            
+            # Happiness/Merit System
+            happiness=data.get('happiness', 100),
+            suspicious_events=data.get('suspicious_events', 0),
+            token_violations=data.get('token_violations', 0),
+            rate_limit_violations=data.get('rate_limit_violations', 0)
         )
 
 class UserStore:
@@ -736,6 +855,10 @@ class UserStore:
                             print(f"🔄 LOADING: User {token[:8]} loaded - status: {getattr(user, 'status', 'not set')}")
                             print(f"🔄 LOADING: User {token[:8]} loaded - hasattr status: {hasattr(user, 'status')}")
                             print(f"🔄 LOADING: User {token[:8]} loaded - is_disabled(): {user.is_disabled()}")
+                            print(f"🔄 LOADING: User {token[:8]} token_counts keys: {list(user.token_counts.keys()) if user.token_counts else 'None'}")
+                            if user.token_counts:
+                                for family, count in user.token_counts.items():
+                                    print(f"🔄 LOADING: User {token[:8]} {family}: {count.total} total, {count.requests} requests")
                             
                             self.users[token] = user
                             
@@ -803,6 +926,11 @@ class UserStore:
                 print(f"🐱 FIREBASE: status in data: {user_data.get('status')}")
                 print(f"🐱 FIREBASE: user object status: {getattr(self.users[token], 'status', 'not set')}")
                 print(f"🐱 FIREBASE: user object is_disabled(): {self.users[token].is_disabled()}")
+                print(f"🐱 FIREBASE: token_counts in data: {list(user_data.get('token_counts', {}).keys())}")
+                for family, count_data in user_data.get('token_counts', {}).items():
+                    if isinstance(count_data, dict):
+                        original_key = family.replace('_DOT_', '.').replace('_HASH_', '#').replace('_DOLLAR_', '$').replace('_LBRACKET_', '[').replace('_RBRACKET_', ']').replace('_SLASH_', '/')
+                        print(f"🐱 FIREBASE: {family} -> {original_key}: {count_data.get('total', 0)} total, {count_data.get('requests', 0)} requests")
                 
                 user_ref = self.firebase_db.child('users').child(sanitized_token)
                 user_ref.set(user_data)
