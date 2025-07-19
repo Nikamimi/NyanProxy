@@ -440,6 +440,23 @@ app.register_blueprint(model_families_bp)
 def inject_csrf_token():
     return dict(csrf_token=generate_csrf_token)
 
+# Load anti-abuse configuration from Firebase at startup
+try:
+    from src.services.config_manager import config_manager
+    anti_abuse_config = config_manager.load_anti_abuse_config()
+    
+    # Update auth_config with persisted Firebase values
+    auth_config.rate_limit_enabled = anti_abuse_config.rate_limit_enabled
+    auth_config.rate_limit_per_minute = anti_abuse_config.rate_limit_per_minute
+    auth_config.max_ips_per_user = anti_abuse_config.max_ips_per_user
+    auth_config.max_ips_auto_ban = anti_abuse_config.max_ips_auto_ban
+    
+    print(f"🐱 STARTUP: Loaded anti-abuse config - max_ips_per_user: {auth_config.max_ips_per_user}")
+    print(f"🐱 STARTUP: Loaded anti-abuse config - max_ips_auto_ban: {auth_config.max_ips_auto_ban}")
+except Exception as e:
+    print(f"🚫 STARTUP: Failed to load anti-abuse config: {e}")
+    print(f"🐱 STARTUP: Using defaults - max_ips_per_user: {auth_config.max_ips_per_user}")
+
 # Run initial health checks in background
 key_manager.run_initial_health_checks()
 
