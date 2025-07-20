@@ -646,7 +646,35 @@ def openai_chat_completions():
                                         if clean_chunk.startswith('data: '):
                                             clean_chunk = clean_chunk[6:].strip()
                                         
-                                        chunk_data = json.loads(clean_chunk)
+                                        # Skip empty chunks or end markers
+                                        if not clean_chunk or clean_chunk == '[DONE]':
+                                            continue
+                                        
+                                        # Try to fix common JSON issues
+                                        try:
+                                            chunk_data = json.loads(clean_chunk)
+                                        except json.JSONDecodeError as je:
+                                            # Try to fix truncated JSON by finding the last complete object
+                                            try:
+                                                # Find the last complete JSON object
+                                                bracket_count = 0
+                                                last_complete = ""
+                                                for i, char in enumerate(clean_chunk):
+                                                    if char == '{':
+                                                        bracket_count += 1
+                                                    elif char == '}':
+                                                        bracket_count -= 1
+                                                        if bracket_count == 0:
+                                                            last_complete = clean_chunk[:i+1]
+                                                            break
+                                                
+                                                if last_complete:
+                                                    chunk_data = json.loads(last_complete)
+                                                else:
+                                                    continue
+                                            except:
+                                                continue
+                                        
                                         if 'choices' in chunk_data:
                                             for choice in chunk_data['choices']:
                                                 if 'delta' in choice and 'content' in choice['delta']:
@@ -656,8 +684,10 @@ def openai_chat_completions():
                                                     # Some formats put content directly in message
                                                     content = choice['message']['content']
                                                     response_text += content
-                                    except (json.JSONDecodeError, KeyError) as e:
-                                        print(f"🚫 DEBUG: Failed to parse chunk for {model}: {e}")
+                                    except Exception as e:
+                                        # Log first few failures but don't spam
+                                        if len([c for c in data_chunks[:5] if c == chunk]) <= 2:
+                                            print(f"🚫 DEBUG: Failed to parse chunk for {model}: {str(e)[:100]}...")
                                         continue
                             
                             # Estimate completion tokens from collected response text
@@ -675,10 +705,45 @@ def openai_chat_completions():
                                 print(f"🚫 DEBUG: No response text extracted for streaming {model}")
                             
                         except Exception as e:
-                            # Fallback: estimate based on content length
+                            print(f"🚫 DEBUG: Exception during streaming token extraction for {model}: {e}")
+                            
+                            # Enhanced fallback: try to extract readable text from response
                             if response_content:
-                                content_length = len(response_content)
-                                completion_tokens = max(content_length // 4, 1)  # ~4 chars per token estimate
+                                try:
+                                    content_str = response_content.decode('utf-8') if isinstance(response_content, bytes) else str(response_content)
+                                    
+                                    # Simple text extraction - look for readable content patterns
+                                    import re
+                                    
+                                    # Method 1: Extract any quoted text content
+                                    quoted_content = re.findall(r'"content":"([^"]*)"', content_str)
+                                    if quoted_content:
+                                        response_text = ' '.join(quoted_content).replace('\\n', '\n').replace('\\"', '"')
+                                        print(f"🐱 DEBUG: Fallback extracted quoted content for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
+                                        
+                                        if response_text.strip():
+                                            completion_token_result = unified_tokenizer.count_tokens(
+                                                request_data=request_json,
+                                                service="openai",
+                                                model=model,
+                                                response_text=response_text.strip()
+                                            )
+                                            completion_tokens = completion_token_result.get('completion_tokens', 0)
+                                            print(f"🐱 DEBUG: Fallback tokenizer returned {completion_tokens} completion tokens for {model}")
+                                    
+                                    # Method 2: If no quoted content found, estimate from total content length
+                                    if completion_tokens == 0:
+                                        # Filter out JSON overhead and count only likely response content
+                                        cleaned_content = re.sub(r'[{}[\]":,]', ' ', content_str)
+                                        cleaned_content = re.sub(r'\s+', ' ', cleaned_content).strip()
+                                        
+                                        # More conservative token estimation
+                                        completion_tokens = max(len(cleaned_content.split()) // 2, 1)
+                                        print(f"🐱 DEBUG: Fallback length-based estimation for {model}: {completion_tokens} tokens")
+                                        
+                                except Exception as fallback_error:
+                                    print(f"🚫 DEBUG: Fallback also failed for {model}: {fallback_error}")
+                                    completion_tokens = max(len(response_content) // 8, 1)  # Very conservative estimate
                         
                         tokens = {
                             'prompt_tokens': token_result['prompt_tokens'],
