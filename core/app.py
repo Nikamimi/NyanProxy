@@ -644,7 +644,11 @@ def openai_chat_completions():
                                     print(f"🐱 DEBUG: Sample chunk {i+1} for {model}: '{sample_chunk[:150]}...'")
                                 
                                 chunks_with_content = 0
+                                chunks_processed = 0
+                                chunks_parsed_successfully = 0
+                                
                                 for chunk in data_chunks:
+                                    chunks_processed += 1
                                     try:
                                         # Clean up the chunk if it has SSE prefixes
                                         clean_chunk = chunk.strip()
@@ -653,12 +657,23 @@ def openai_chat_completions():
                                         
                                         # Skip empty chunks or end markers
                                         if not clean_chunk or clean_chunk == '[DONE]':
+                                            if chunks_processed <= 5:  # Debug first few skips
+                                                print(f"🐱 DEBUG: Skipping empty/DONE chunk {chunks_processed} for {model}")
                                             continue
+                                        
+                                        # Debug the clean chunk before parsing
+                                        if chunks_processed <= 3:
+                                            print(f"🐱 DEBUG: Clean chunk {chunks_processed} for {model}: '{clean_chunk[:200]}...'")
                                         
                                         # Try to fix common JSON issues
                                         try:
                                             chunk_data = json.loads(clean_chunk)
+                                            chunks_parsed_successfully += 1
+                                            if chunks_processed <= 3:
+                                                print(f"🐱 DEBUG: Successfully parsed chunk {chunks_processed} for {model}")
                                         except json.JSONDecodeError as je:
+                                            if chunks_processed <= 3:
+                                                print(f"🚫 DEBUG: JSON parse failed for chunk {chunks_processed}: {str(je)[:100]}")
                                             # Try to fix truncated JSON by finding the last complete object
                                             try:
                                                 # Find the last complete JSON object
@@ -675,9 +690,16 @@ def openai_chat_completions():
                                                 
                                                 if last_complete:
                                                     chunk_data = json.loads(last_complete)
+                                                    chunks_parsed_successfully += 1
+                                                    if chunks_processed <= 3:
+                                                        print(f"🐱 DEBUG: Fixed and parsed chunk {chunks_processed} for {model}")
                                                 else:
+                                                    if chunks_processed <= 3:
+                                                        print(f"🚫 DEBUG: Could not fix chunk {chunks_processed} for {model}")
                                                     continue
-                                            except:
+                                            except Exception as fix_error:
+                                                if chunks_processed <= 3:
+                                                    print(f"🚫 DEBUG: Fix attempt failed for chunk {chunks_processed}: {fix_error}")
                                                 continue
                                         
                                         if 'choices' in chunk_data:
@@ -712,7 +734,7 @@ def openai_chat_completions():
                                         continue
                             
                             # Estimate completion tokens from collected response text
-                            print(f"🐱 DEBUG: Processed {len(data_chunks)} chunks, {chunks_with_content} had content for {model}")
+                            print(f"🐱 DEBUG: Processed {chunks_processed}/{len(data_chunks)} chunks, {chunks_parsed_successfully} parsed successfully, {chunks_with_content} had content for {model}")
                             if response_text.strip():
                                 print(f"🐱 DEBUG: Extracted response text for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
                                 completion_token_result = unified_tokenizer.count_tokens(
@@ -724,7 +746,7 @@ def openai_chat_completions():
                                 completion_tokens = completion_token_result.get('completion_tokens', 0)
                                 print(f"🐱 DEBUG: Tokenizer returned {completion_tokens} completion tokens for {model}")
                             else:
-                                print(f"🚫 DEBUG: No response text extracted for streaming {model} ({chunks_with_content}/{len(data_chunks)} chunks had content)")
+                                print(f"🚫 DEBUG: No response text extracted for streaming {model} ({chunks_with_content}/{chunks_parsed_successfully} successfully parsed chunks had content)")
                             
                         except Exception as e:
                             print(f"🚫 DEBUG: Exception during streaming token extraction for {model}: {e}")
