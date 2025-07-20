@@ -608,13 +608,12 @@ def openai_chat_completions():
                     response_data = json.loads(response_content)
                     if 'usage' in response_data:
                         tokens = response_data['usage']
-                        print(f"🐱 DEBUG: OpenAI provided usage data for {model} (streaming: {is_streaming}): input={tokens.get('prompt_tokens', 0)}, output={tokens.get('completion_tokens', 0)}")
+                        print(f"🐱 Token tracking for {model}: input={tokens.get('prompt_tokens', 0)}, output={tokens.get('completion_tokens', 0)} (API provided)")
                         # Skip all the complex streaming logic if we have usage data
                     elif is_streaming:
-                        print(f"🐱 DEBUG: No usage data from OpenAI for streaming {model}, attempting chunk parsing...")
                         # Only do complex streaming parsing if no usage data is available
-                except (json.JSONDecodeError, Exception) as e:
-                    print(f"🚫 DEBUG: Could not parse OpenAI response as JSON for {model}: {e}")
+                        pass
+                except (json.JSONDecodeError, Exception):
                     tokens = None
                 
                 # For streaming requests without usage data, count prompt tokens and estimate completion tokens from stream
@@ -636,7 +635,6 @@ def openai_chat_completions():
                                 # For streaming responses, content may be in different formats
                                 # Try to extract text from Server-Sent Events (SSE) format
                                 content_str = response_content.decode('utf-8') if isinstance(response_content, bytes) else str(response_content)
-                                print(f"🐱 DEBUG: Raw streaming content for {model} (first 200 chars): '{content_str[:200]}...'")
                                 
                                 # Parse SSE data chunks - try multiple patterns
                                 import re
@@ -650,12 +648,6 @@ def openai_chat_completions():
                                     # Pattern 3: Split by newlines and find JSON-like strings
                                     lines = content_str.split('\n')
                                     data_chunks = [line.strip() for line in lines if line.strip().startswith('{') and 'choices' in line]
-                                
-                                print(f"🐱 DEBUG: Found {len(data_chunks)} data chunks for {model}")
-                                
-                                # Debug: Show first few chunks to understand the structure
-                                for i, sample_chunk in enumerate(data_chunks[:3]):
-                                    print(f"🐱 DEBUG: Sample chunk {i+1} for {model}: '{sample_chunk[:150]}...'")
                                 
                                 chunks_with_content = 0
                                 chunks_processed = 0
@@ -671,23 +663,13 @@ def openai_chat_completions():
                                         
                                         # Skip empty chunks or end markers
                                         if not clean_chunk or clean_chunk == '[DONE]':
-                                            if chunks_processed <= 5:  # Debug first few skips
-                                                print(f"🐱 DEBUG: Skipping empty/DONE chunk {chunks_processed} for {model}")
                                             continue
-                                        
-                                        # Debug the clean chunk before parsing
-                                        if chunks_processed <= 3:
-                                            print(f"🐱 DEBUG: Clean chunk {chunks_processed} for {model}: '{clean_chunk[:200]}...'")
                                         
                                         # Try to fix common JSON issues
                                         try:
                                             chunk_data = json.loads(clean_chunk)
                                             chunks_parsed_successfully += 1
-                                            if chunks_processed <= 3:
-                                                print(f"🐱 DEBUG: Successfully parsed chunk {chunks_processed} for {model}")
-                                        except json.JSONDecodeError as je:
-                                            if chunks_processed <= 3:
-                                                print(f"🚫 DEBUG: JSON parse failed for chunk {chunks_processed}: {str(je)[:100]}")
+                                        except json.JSONDecodeError:
                                             # Try to fix truncated JSON by finding the last complete object
                                             try:
                                                 # Find the last complete JSON object
@@ -705,52 +687,29 @@ def openai_chat_completions():
                                                 if last_complete:
                                                     chunk_data = json.loads(last_complete)
                                                     chunks_parsed_successfully += 1
-                                                    if chunks_processed <= 3:
-                                                        print(f"🐱 DEBUG: Fixed and parsed chunk {chunks_processed} for {model}")
                                                 else:
-                                                    if chunks_processed <= 3:
-                                                        print(f"🚫 DEBUG: Could not fix chunk {chunks_processed} for {model}")
                                                     continue
-                                            except Exception as fix_error:
-                                                if chunks_processed <= 3:
-                                                    print(f"🚫 DEBUG: Fix attempt failed for chunk {chunks_processed}: {fix_error}")
+                                            except Exception:
                                                 continue
                                         
                                         if 'choices' in chunk_data:
-                                            for choice_idx, choice in enumerate(chunk_data['choices']):
-                                                # Debug what's actually in the choice
-                                                if choice_idx < 3:  # Only debug first few choices
-                                                    print(f"🐱 DEBUG: Choice {choice_idx} structure for {model}: {list(choice.keys())}")
-                                                    if 'delta' in choice:
-                                                        print(f"🐱 DEBUG: Delta structure: {list(choice['delta'].keys())}")
-                                                        if 'content' in choice['delta']:
-                                                            print(f"🐱 DEBUG: Delta content: '{choice['delta']['content']}'")
-                                                
+                                            for choice in chunk_data['choices']:
                                                 if 'delta' in choice and 'content' in choice['delta']:
                                                     content = choice['delta']['content']
                                                     if content:  # Only add non-empty content
                                                         response_text += content
                                                         chunks_with_content += 1
-                                                        if len(response_text) <= 50:  # Debug first bits of content
-                                                            print(f"🐱 DEBUG: Added delta content for {model}: '{content}'")
                                                 elif 'message' in choice and 'content' in choice['message']:
                                                     # Some formats put content directly in message
                                                     content = choice['message']['content']
                                                     if content:  # Only add non-empty content
                                                         response_text += content
                                                         chunks_with_content += 1
-                                                        if len(response_text) <= 50:  # Debug first bits of content
-                                                            print(f"🐱 DEBUG: Added message content for {model}: '{content}'")
-                                    except Exception as e:
-                                        # Log first few failures but don't spam
-                                        if len([c for c in data_chunks[:5] if c == chunk]) <= 2:
-                                            print(f"🚫 DEBUG: Failed to parse chunk for {model}: {str(e)[:100]}...")
+                                    except Exception:
                                         continue
                             
                             # Estimate completion tokens from collected response text
-                            print(f"🐱 DEBUG: Processed {chunks_processed}/{len(data_chunks)} chunks, {chunks_parsed_successfully} parsed successfully, {chunks_with_content} had content for {model}")
                             if response_text.strip():
-                                print(f"🐱 DEBUG: Extracted response text for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
                                 completion_token_result = unified_tokenizer.count_tokens(
                                     request_data=request_json,  # Use original request data
                                     service="openai",
@@ -758,12 +717,8 @@ def openai_chat_completions():
                                     response_text=response_text.strip()
                                 )
                                 completion_tokens = completion_token_result.get('completion_tokens', 0)
-                                print(f"🐱 DEBUG: Tokenizer returned {completion_tokens} completion tokens for {model}")
-                            else:
-                                print(f"🚫 DEBUG: No response text extracted for streaming {model} ({chunks_with_content}/{chunks_parsed_successfully} successfully parsed chunks had content)")
                             
-                        except Exception as e:
-                            print(f"🚫 DEBUG: Exception during streaming token extraction for {model}: {e}")
+                        except Exception:
                             completion_tokens = 0
                         
                         # Simple fallback: extract complete AI response and use tiktoken directly
@@ -779,17 +734,14 @@ def openai_chat_completions():
                                 content_matches = re.findall(r'"delta":\s*{[^}]*"content":\s*"([^"]*)"', content_str)
                                 complete_response = ''.join(content_matches).replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
                                 
-                                print(f"🐱 DEBUG: Extracted complete AI response for {model}: '{complete_response[:100]}...' (length: {len(complete_response)})")
-                                
                                 if complete_response.strip():
                                     # Use tiktoken directly on the complete response
                                     try:
                                         import tiktoken
                                         encoding = tiktoken.encoding_for_model(model if model.startswith('gpt') else 'gpt-3.5-turbo')
                                         completion_tokens = len(encoding.encode(complete_response))
-                                        print(f"🐱 DEBUG: Tiktoken counted {completion_tokens} tokens for complete {model} response")
-                                    except Exception as tiktoken_error:
-                                        print(f"🚫 DEBUG: Tiktoken failed for {model}: {tiktoken_error}")
+                                        print(f"🐱 Token tracking for {model}: input={token_result['prompt_tokens']}, output={completion_tokens} (tiktoken on complete response)")
+                                    except Exception:
                                         # Fallback to unified tokenizer
                                         completion_token_result = unified_tokenizer.count_tokens(
                                             request_data=request_json,
@@ -798,15 +750,13 @@ def openai_chat_completions():
                                             response_text=complete_response.strip()
                                         )
                                         completion_tokens = completion_token_result.get('completion_tokens', 0)
-                                        print(f"🐱 DEBUG: Unified tokenizer fallback returned {completion_tokens} completion tokens for {model}")
+                                        print(f"🐱 Token tracking for {model}: input={token_result['prompt_tokens']}, output={completion_tokens} (unified tokenizer fallback)")
                                 
                                 # Final fallback if no content extracted
                                 if completion_tokens == 0:
-                                    print(f"🚫 DEBUG: No content extracted from streaming {model}, using minimal estimation")
                                     completion_tokens = max(len(content_str) // 20, 1)  # Very conservative estimate
                                     
-                            except Exception as fallback_error:
-                                print(f"🚫 DEBUG: Complete response extraction failed for {model}: {fallback_error}")
+                            except Exception:
                                 completion_tokens = max(len(response_content) // 20, 1)  # Very conservative estimate
                         
                         tokens = {
@@ -833,8 +783,6 @@ def openai_chat_completions():
                                 if 'message' in choice and 'content' in choice['message']:
                                     response_text += choice['message']['content'] + " "
                         
-                        print(f"🐱 DEBUG: Non-streaming {model} - no usage data, extracted response text: '{response_text[:100]}...' (length: {len(response_text)})")
-                        
                         # Use unified tokenizer (same as Anthropic approach)
                         token_result = unified_tokenizer.count_tokens(
                             request_data=request_json,
@@ -847,10 +795,9 @@ def openai_chat_completions():
                             'completion_tokens': token_result['completion_tokens'],
                             'total_tokens': token_result['total_tokens']
                         }
-                        print(f"🐱 DEBUG: Non-streaming {model} - tokenizer result: input={tokens['prompt_tokens']}, output={tokens['completion_tokens']}")
+                        print(f"🐱 Token tracking for {model}: input={tokens['prompt_tokens']}, output={tokens['completion_tokens']} (unified tokenizer)")
                         
-                    except Exception as e:
-                        print(f"🚫 DEBUG: Non-streaming fallback failed for {model}: {e}")
+                    except Exception:
                         # Minimal fallback - just count input tokens
                         try:
                             token_result = unified_tokenizer.count_tokens(
@@ -870,9 +817,6 @@ def openai_chat_completions():
             
             # Track token usage for authenticated users
             if tokens and hasattr(g, 'auth_data') and g.auth_data.get('type') == 'user_token':
-                # Debug logging for token tracking
-                print(f"🐱 DEBUG: Tracking OpenAI tokens for {model} - input: {tokens.get('prompt_tokens', 0)}, output: {tokens.get('completion_tokens', 0)}, streaming: {is_streaming}")
-                
                 # Track model usage and get cost first
                 model_cost = model_manager.track_model_usage(
                     user_token=g.auth_data['token'],
