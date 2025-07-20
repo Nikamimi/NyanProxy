@@ -820,7 +820,12 @@ def get_my_user_stats():
 
 @admin_bp.route('/model-usage-stats', methods=['GET'])
 def get_model_usage_stats():
-    """Get all active/whitelisted models with their usage statistics for the dashboard"""
+    """
+    Get all active/whitelisted models with their usage statistics for the dashboard.
+    
+    This endpoint only returns models that are explicitly whitelisted in the model_families_config.json
+    to ensure the dashboard Key Status section only shows models that are actually enabled.
+    """
     try:
         from ..services.model_families import model_manager, AIProvider
         
