@@ -639,6 +639,10 @@ def openai_chat_completions():
                                 
                                 print(f"🐱 DEBUG: Found {len(data_chunks)} data chunks for {model}")
                                 
+                                # Debug: Show first few chunks to understand the structure
+                                for i, sample_chunk in enumerate(data_chunks[:3]):
+                                    print(f"🐱 DEBUG: Sample chunk {i+1} for {model}: '{sample_chunk[:150]}...'")
+                                
                                 for chunk in data_chunks:
                                     try:
                                         # Clean up the chunk if it has SSE prefixes
@@ -679,11 +683,17 @@ def openai_chat_completions():
                                             for choice in chunk_data['choices']:
                                                 if 'delta' in choice and 'content' in choice['delta']:
                                                     content = choice['delta']['content']
-                                                    response_text += content
+                                                    if content:  # Only add non-empty content
+                                                        response_text += content
+                                                        if len(response_text) <= 50:  # Debug first bits of content
+                                                            print(f"🐱 DEBUG: Added delta content for {model}: '{content}'")
                                                 elif 'message' in choice and 'content' in choice['message']:
                                                     # Some formats put content directly in message
                                                     content = choice['message']['content']
-                                                    response_text += content
+                                                    if content:  # Only add non-empty content
+                                                        response_text += content
+                                                        if len(response_text) <= 50:  # Debug first bits of content
+                                                            print(f"🐱 DEBUG: Added message content for {model}: '{content}'")
                                     except Exception as e:
                                         # Log first few failures but don't spam
                                         if len([c for c in data_chunks[:5] if c == chunk]) <= 2:
@@ -715,10 +725,22 @@ def openai_chat_completions():
                                     # Simple text extraction - look for readable content patterns
                                     import re
                                     
-                                    # Method 1: Extract any quoted text content
-                                    quoted_content = re.findall(r'"content":"([^"]*)"', content_str)
+                                    # Method 1: Extract any quoted text content - try multiple patterns
+                                    quoted_content = []
+                                    
+                                    # Pattern 1: Standard "content":"text" format
+                                    quoted_content.extend(re.findall(r'"content":"([^"]*)"', content_str))
+                                    
+                                    # Pattern 2: "content": "text" with spaces
+                                    quoted_content.extend(re.findall(r'"content":\s*"([^"]*)"', content_str))
+                                    
+                                    # Pattern 3: Handle escaped quotes in content
+                                    quoted_content.extend(re.findall(r'"content":"((?:[^"\\]|\\.)*)"', content_str))
+                                    
+                                    print(f"🐱 DEBUG: Fallback found {len(quoted_content)} content matches for {model}")
+                                    
                                     if quoted_content:
-                                        response_text = ' '.join(quoted_content).replace('\\n', '\n').replace('\\"', '"')
+                                        response_text = ' '.join(quoted_content).replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
                                         print(f"🐱 DEBUG: Fallback extracted quoted content for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
                                         
                                         if response_text.strip():
