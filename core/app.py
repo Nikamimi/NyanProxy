@@ -764,56 +764,57 @@ def openai_chat_completions():
                             
                         except Exception as e:
                             print(f"🚫 DEBUG: Exception during streaming token extraction for {model}: {e}")
-                            
-                            # Enhanced fallback: try to extract readable text from response
-                            if response_content:
-                                try:
-                                    content_str = response_content.decode('utf-8') if isinstance(response_content, bytes) else str(response_content)
+                            completion_tokens = 0
+                        
+                        # Enhanced fallback: try to extract readable text from response using simple regex
+                        if completion_tokens == 0 and response_content:
+                            try:
+                                content_str = response_content.decode('utf-8') if isinstance(response_content, bytes) else str(response_content)
+                                
+                                # Simple text extraction - look for readable content patterns
+                                import re
+                                
+                                # Method 1: Extract any quoted text content - try multiple patterns
+                                quoted_content = []
+                                
+                                # Pattern 1: Standard "content":"text" format
+                                quoted_content.extend(re.findall(r'"content":"([^"]*)"', content_str))
+                                
+                                # Pattern 2: "content": "text" with spaces
+                                quoted_content.extend(re.findall(r'"content":\s*"([^"]*)"', content_str))
+                                
+                                # Pattern 3: Handle escaped quotes in content
+                                quoted_content.extend(re.findall(r'"content":"((?:[^"\\]|\\.)*)"', content_str))
+                                
+                                print(f"🐱 DEBUG: Regex fallback found {len(quoted_content)} content matches for {model}")
+                                
+                                if quoted_content:
+                                    response_text = ' '.join(quoted_content).replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
+                                    print(f"🐱 DEBUG: Regex fallback extracted content for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
                                     
-                                    # Simple text extraction - look for readable content patterns
-                                    import re
+                                    if response_text.strip():
+                                        completion_token_result = unified_tokenizer.count_tokens(
+                                            request_data=request_json,
+                                            service="openai",
+                                            model=model,
+                                            response_text=response_text.strip()
+                                        )
+                                        completion_tokens = completion_token_result.get('completion_tokens', 0)
+                                        print(f"🐱 DEBUG: Regex fallback tokenizer returned {completion_tokens} completion tokens for {model}")
+                                
+                                # Method 2: If no quoted content found, estimate from total content length
+                                if completion_tokens == 0:
+                                    # Filter out JSON overhead and count only likely response content
+                                    cleaned_content = re.sub(r'[{}[\]":,]', ' ', content_str)
+                                    cleaned_content = re.sub(r'\s+', ' ', cleaned_content).strip()
                                     
-                                    # Method 1: Extract any quoted text content - try multiple patterns
-                                    quoted_content = []
+                                    # More conservative token estimation
+                                    completion_tokens = max(len(cleaned_content.split()) // 2, 1)
+                                    print(f"🐱 DEBUG: Length-based estimation for {model}: {completion_tokens} tokens")
                                     
-                                    # Pattern 1: Standard "content":"text" format
-                                    quoted_content.extend(re.findall(r'"content":"([^"]*)"', content_str))
-                                    
-                                    # Pattern 2: "content": "text" with spaces
-                                    quoted_content.extend(re.findall(r'"content":\s*"([^"]*)"', content_str))
-                                    
-                                    # Pattern 3: Handle escaped quotes in content
-                                    quoted_content.extend(re.findall(r'"content":"((?:[^"\\]|\\.)*)"', content_str))
-                                    
-                                    print(f"🐱 DEBUG: Fallback found {len(quoted_content)} content matches for {model}")
-                                    
-                                    if quoted_content:
-                                        response_text = ' '.join(quoted_content).replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
-                                        print(f"🐱 DEBUG: Fallback extracted quoted content for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
-                                        
-                                        if response_text.strip():
-                                            completion_token_result = unified_tokenizer.count_tokens(
-                                                request_data=request_json,
-                                                service="openai",
-                                                model=model,
-                                                response_text=response_text.strip()
-                                            )
-                                            completion_tokens = completion_token_result.get('completion_tokens', 0)
-                                            print(f"🐱 DEBUG: Fallback tokenizer returned {completion_tokens} completion tokens for {model}")
-                                    
-                                    # Method 2: If no quoted content found, estimate from total content length
-                                    if completion_tokens == 0:
-                                        # Filter out JSON overhead and count only likely response content
-                                        cleaned_content = re.sub(r'[{}[\]":,]', ' ', content_str)
-                                        cleaned_content = re.sub(r'\s+', ' ', cleaned_content).strip()
-                                        
-                                        # More conservative token estimation
-                                        completion_tokens = max(len(cleaned_content.split()) // 2, 1)
-                                        print(f"🐱 DEBUG: Fallback length-based estimation for {model}: {completion_tokens} tokens")
-                                        
-                                except Exception as fallback_error:
-                                    print(f"🚫 DEBUG: Fallback also failed for {model}: {fallback_error}")
-                                    completion_tokens = max(len(response_content) // 8, 1)  # Very conservative estimate
+                            except Exception as fallback_error:
+                                print(f"🚫 DEBUG: Regex fallback also failed for {model}: {fallback_error}")
+                                completion_tokens = max(len(response_content) // 8, 1)  # Very conservative estimate
                         
                         tokens = {
                             'prompt_tokens': token_result['prompt_tokens'],
