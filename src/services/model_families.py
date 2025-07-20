@@ -197,7 +197,10 @@ class ModelFamilyManager:
             'last_request': None
         }
         self.firebase_db = None
-        self._save_counter = 0  # Counter to batch saves
+        self._last_save_time = datetime.now()  # Track last save time
+        # Save interval configurable via environment variable, default 1 minute (60 seconds)
+        self._save_interval_minutes = int(os.getenv('GLOBAL_STATS_SAVE_INTERVAL_MINUTES', 1))
+        print(f"🐱 Global stats will be saved to Firebase every {self._save_interval_minutes} minutes")
         
         # Initialize with default models
         self._initialize_default_models()
@@ -543,13 +546,29 @@ class ModelFamilyManager:
             unique_models = set(self.global_usage_stats.keys())
             self.global_totals['total_models_used'] = len(unique_models)
             
-            # Save to Firebase periodically for better persistence (every 3 requests)
-            self._save_counter += 1
-            if self._save_counter % 3 == 0:
+            # Save to Firebase periodically for better persistence (time-based)
+            now = datetime.now()
+            time_since_last_save = (now - self._last_save_time).total_seconds() / 60  # Convert to minutes
+            
+            if time_since_last_save >= self._save_interval_minutes:
+                print(f"🐱 Saving global stats to Firebase (last saved {time_since_last_save:.1f} minutes ago)")
                 self._save_global_totals()
                 self._save_global_usage_stats()
+                self._last_save_time = now
             
             return cost
+    
+    def set_save_interval(self, minutes: int):
+        """Set the save interval in minutes"""
+        self._save_interval_minutes = max(1, minutes)  # Minimum 1 minute
+        print(f"🐱 Global stats save interval set to {self._save_interval_minutes} minutes")
+    
+    def force_save_global_stats(self):
+        """Force immediate save of global statistics"""
+        print("🐱 Force saving global stats to Firebase")
+        self._save_global_totals()
+        self._save_global_usage_stats()
+        self._last_save_time = datetime.now()
     
     def _load_global_totals(self):
         """Load global totals from Firebase"""
@@ -746,7 +765,7 @@ class ModelFamilyManager:
         print("🐱 Saving model usage data before shutdown...")
         try:
             self.save_usage_stats_sync()
-            self._save_global_totals()
+            self.force_save_global_stats()  # Use force save for immediate shutdown saving
             print("🐱 Model usage data saved successfully")
         except Exception as e:
             print(f"Error saving data during shutdown: {e}")
