@@ -223,6 +223,9 @@ class ModelFamilyManager:
         
         # Load global usage stats from Firebase
         self._load_global_usage_stats()
+        
+        # Clean up any duplicate entries in whitelist
+        self.clean_whitelist_duplicates()
     
     def _initialize_default_models(self):
         """Initialize with default model configurations"""
@@ -354,7 +357,10 @@ class ModelFamilyManager:
                 for provider_str, model_list in config.get('whitelisted_models', {}).items():
                     try:
                         provider = AIProvider(provider_str)
-                        self.whitelisted_models[provider] = set(model_list)
+                        # Clean the list: remove None values and duplicates
+                        clean_list = [mid for mid in model_list if mid is not None]
+                        self.whitelisted_models[provider] = set(clean_list)
+                        print(f"📥 Loaded {len(clean_list)} models for {provider_str}: {sorted(clean_list)}")
                     except ValueError:
                         print(f"Unknown provider in config: {provider_str}")
                 
@@ -383,7 +389,10 @@ class ModelFamilyManager:
                         for provider_str, model_list in config.get('whitelisted_models', {}).items():
                             try:
                                 provider = AIProvider(provider_str)
-                                self.whitelisted_models[provider] = set(model_list)
+                                # Clean the list: remove None values and duplicates
+                                clean_list = [mid for mid in model_list if mid is not None]
+                                self.whitelisted_models[provider] = set(clean_list)
+                                print(f"🔥 Firebase loaded {len(clean_list)} models for {provider_str}: {sorted(clean_list)}")
                             except ValueError:
                                 print(f"Unknown provider in Firebase config: {provider_str}")
                         
@@ -409,9 +418,10 @@ class ModelFamilyManager:
     
     def _save_configuration(self):
         """Save configuration to persistent storage"""
+        # Ensure no duplicates and filter out None values
         config = {
             'whitelisted_models': {
-                provider.value: list(models) 
+                provider.value: sorted(list(set(filter(None, models))))
                 for provider, models in self.whitelisted_models.items()
             },
             'last_updated': datetime.now().isoformat()
@@ -451,9 +461,10 @@ class ModelFamilyManager:
     
     def _save_configuration_sync(self):
         """Save configuration synchronously (for critical operations like model addition)"""
+        # Ensure no duplicates and filter out None values
         config = {
             'whitelisted_models': {
-                provider.value: list(models) 
+                provider.value: sorted(list(set(filter(None, models))))
                 for provider, models in self.whitelisted_models.items()
             },
             'last_updated': datetime.now().isoformat()
@@ -560,12 +571,34 @@ class ModelFamilyManager:
     def set_provider_whitelist(self, provider: AIProvider, model_ids: List[str]) -> bool:
         """Set the complete whitelist for a provider"""
         with self.lock:
-            # Validate all model IDs exist
-            valid_ids = [mid for mid in model_ids if mid in self.models]
+            # Filter out None values and validate all model IDs exist
+            clean_ids = [mid for mid in model_ids if mid is not None and mid in self.models]
+            # Remove duplicates by converting to set
+            unique_ids = set(clean_ids)
             
-            self.whitelisted_models[provider] = set(valid_ids)
+            print(f"🔧 Setting whitelist for {provider.value}: {sorted(unique_ids)}")
+            self.whitelisted_models[provider] = unique_ids
             self._save_configuration()
-            return len(valid_ids) == len(model_ids)
+            return len(unique_ids) == len([mid for mid in model_ids if mid is not None])
+    
+    def clean_whitelist_duplicates(self):
+        """Clean up any duplicate entries in the whitelist and save"""
+        with self.lock:
+            cleaned = False
+            for provider, models in self.whitelisted_models.items():
+                original_count = len(models)
+                # Convert to list, filter None, remove duplicates, convert back to set
+                clean_models = set(filter(None, models))
+                if len(clean_models) != original_count:
+                    print(f"🧹 Cleaned {provider.value}: {original_count} -> {len(clean_models)} models")
+                    self.whitelisted_models[provider] = clean_models
+                    cleaned = True
+            
+            if cleaned:
+                print("🧹 Saving cleaned whitelist configuration...")
+                self._save_configuration_sync()  # Use sync to ensure it's saved
+            
+            return cleaned
     
     def track_model_usage(self, user_token: str, model_id: str, input_tokens: int, 
                          output_tokens: int, success: bool = True) -> Optional[float]:
