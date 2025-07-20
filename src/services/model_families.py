@@ -226,6 +226,9 @@ class ModelFamilyManager:
         
         # Clean up any duplicate entries in whitelist
         self.clean_whitelist_duplicates()
+        
+        # Apply default whitelists only if no configuration was loaded
+        self._apply_default_whitelists_if_needed()
     
     def _initialize_default_models(self):
         """Initialize with default model configurations"""
@@ -322,11 +325,9 @@ class ModelFamilyManager:
         for model in default_models:
             self.models[model.model_id] = model
         
-        # Initialize default whitelists (all models enabled by default)
+        # Initialize empty whitelists (will be populated from saved config or defaults if none exist)
         for provider in AIProvider:
             self.whitelisted_models[provider] = set()
-            provider_models = [m.model_id for m in default_models if m.provider == provider]
-            self.whitelisted_models[provider].update(provider_models)
     
     def _initialize_firebase(self):
         """Initialize Firebase connection for persistent storage"""
@@ -426,6 +427,10 @@ class ModelFamilyManager:
             },
             'last_updated': datetime.now().isoformat()
         }
+        
+        print(f"💾 Saving configuration to Firebase/file:")
+        for provider, models in config['whitelisted_models'].items():
+            print(f"💾   {provider}: {models}")
         
         if self.firebase_db:
             try:
@@ -546,12 +551,16 @@ class ModelFamilyManager:
         """Add a model to the whitelist"""
         with self.lock:
             if model_id not in self.models:
+                print(f"❌ Cannot add {model_id} to whitelist: model not found")
                 return False
             
             if provider not in self.whitelisted_models:
                 self.whitelisted_models[provider] = set()
             
+            print(f"🟢 Adding {model_id} to {provider.value} whitelist")
+            print(f"🟢 Before: {sorted(self.whitelisted_models[provider])}")
             self.whitelisted_models[provider].add(model_id)
+            print(f"🟢 After: {sorted(self.whitelisted_models[provider])}")
             self._save_configuration()
             return True
     
@@ -599,6 +608,42 @@ class ModelFamilyManager:
                 self._save_configuration_sync()  # Use sync to ensure it's saved
             
             return cleaned
+    
+    def _apply_default_whitelists_if_needed(self):
+        """Apply default model whitelists only if no saved configuration exists"""
+        with self.lock:
+            # Check if any provider has any models whitelisted
+            has_any_config = any(
+                len(models) > 0 for models in self.whitelisted_models.values()
+            )
+            
+            if not has_any_config:
+                print("🔧 No existing whitelist configuration found, applying defaults...")
+                # Get default models by provider
+                default_models_by_provider = {}
+                for model_id, model in self.models.items():
+                    # Only include truly essential default models, not all of them
+                    essential_defaults = {
+                        "gpt-4o-mini",  # Cheap OpenAI model
+                        "gemini-1.5-flash",  # Cheap Google model
+                        # Don't auto-whitelist expensive Anthropic models
+                    }
+                    if model_id in essential_defaults:
+                        provider = model.provider
+                        if provider not in default_models_by_provider:
+                            default_models_by_provider[provider] = set()
+                        default_models_by_provider[provider].add(model_id)
+                
+                # Apply minimal defaults
+                for provider, model_ids in default_models_by_provider.items():
+                    self.whitelisted_models[provider] = model_ids
+                    print(f"🔧 Applied default whitelist for {provider.value}: {sorted(model_ids)}")
+                
+                # Save the minimal defaults
+                if default_models_by_provider:
+                    self._save_configuration()
+            else:
+                print("✅ Existing whitelist configuration found, using saved preferences")
     
     def track_model_usage(self, user_token: str, model_id: str, input_tokens: int, 
                          output_tokens: int, success: bool = True) -> Optional[float]:
