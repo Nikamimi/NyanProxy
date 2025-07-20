@@ -603,20 +603,65 @@ def openai_chat_completions():
             if response.status_code == 200:
                 model = request_json.get('model', 'gpt-3.5-turbo')
                 
-                # For streaming requests, count prompt tokens only
+                # For streaming requests, count prompt tokens and estimate completion tokens from stream
                 if is_streaming:
                     try:
+                        # Count prompt tokens
                         token_result = unified_tokenizer.count_tokens(
                             request_data=request_json,
                             service="openai",
                             model=model
                         )
+                        
+                        # For streaming, we'll estimate completion tokens from the response content
+                        completion_tokens = 0
+                        try:
+                            # Parse streamed response to extract text content
+                            response_text = ""
+                            if response_content:
+                                # For streaming responses, content may be in different formats
+                                # Try to extract text from Server-Sent Events (SSE) format
+                                content_str = response_content.decode('utf-8') if isinstance(response_content, bytes) else str(response_content)
+                                
+                                # Parse SSE data chunks
+                                import re
+                                data_chunks = re.findall(r'data: ({.*?})', content_str, re.DOTALL)
+                                for chunk in data_chunks:
+                                    try:
+                                        chunk_data = json.loads(chunk)
+                                        if 'choices' in chunk_data:
+                                            for choice in chunk_data['choices']:
+                                                if 'delta' in choice and 'content' in choice['delta']:
+                                                    response_text += choice['delta']['content']
+                                    except (json.JSONDecodeError, KeyError):
+                                        continue
+                            
+                            # Estimate completion tokens from collected response text
+                            if response_text.strip():
+                                completion_token_result = unified_tokenizer.count_tokens(
+                                    request_data={"text": response_text},
+                                    service="openai",
+                                    model=model,
+                                    response_text=response_text.strip()
+                                )
+                                completion_tokens = completion_token_result.get('completion_tokens', len(response_text.split()) // 1.3)
+                            
+                        except Exception as e:
+                            # Fallback: estimate based on content length
+                            if response_content:
+                                content_length = len(response_content)
+                                completion_tokens = max(content_length // 4, 1)  # ~4 chars per token estimate
+                        
                         tokens = {
                             'prompt_tokens': token_result['prompt_tokens'],
-                            'completion_tokens': 0,  # Can't count completion tokens for streaming
-                            'total_tokens': token_result['prompt_tokens']
+                            'completion_tokens': completion_tokens,
+                            'total_tokens': token_result['prompt_tokens'] + completion_tokens
                         }
-                    except Exception:
+                        
+                        print(f"🐱 DEBUG: Streaming request for {model} - estimated {completion_tokens} completion tokens")
+                        
+                    except Exception as e:
+                        print(f"🚫 DEBUG: Error counting tokens for streaming {model}: {e}")
                         pass
                 else:
                     # Non-streaming request - try to get full token counts
@@ -663,6 +708,9 @@ def openai_chat_completions():
             
             # Track token usage for authenticated users
             if tokens and hasattr(g, 'auth_data') and g.auth_data.get('type') == 'user_token':
+                # Debug logging for token tracking
+                print(f"🐱 DEBUG: Tracking OpenAI tokens for {model} - input: {tokens.get('prompt_tokens', 0)}, output: {tokens.get('completion_tokens', 0)}, streaming: {is_streaming}")
+                
                 # Track model usage and get cost first
                 model_cost = model_manager.track_model_usage(
                     user_token=g.auth_data['token'],
