@@ -552,6 +552,158 @@ def bulk_refresh_quotas():
         'message': f'Refreshed quotas for {affected_users} users'
     })
 
+@admin_bp.route('/bulk/reactivate-by-rules', methods=['POST'])
+@require_admin_auth
+def bulk_reactivate_by_current_rules():
+    """Reactivate users who no longer violate current anti-abuse rules"""
+    reactivated_count = 0
+    eligible_users = []
+    
+    # Get current anti-abuse config
+    current_max_ips = auth_config.max_ips_per_user
+    
+    for user in user_store.get_all_users():
+        if not user.is_disabled():
+            continue
+            
+        # Check if user should be reactivated based on current rules
+        should_reactivate = False
+        reason = ""
+        
+        if user.disabled_reason == "IP address limit exceeded":
+            if len(user.ip) <= current_max_ips:
+                should_reactivate = True
+                reason = f"IP count ({len(user.ip)}) now within limit ({current_max_ips})"
+        
+        elif user.disabled_reason == "Prompt limit exceeded":
+            # Check against current prompt limits for temporary users
+            if hasattr(user, 'prompt_count') and not user.is_prompt_limit_exceeded():
+                should_reactivate = True
+                reason = "Prompt count now within current limits"
+        
+        if should_reactivate:
+            eligible_users.append({
+                'token': user.token[:8] + '...',
+                'disable_reason': user.disabled_reason,
+                'reactivation_reason': reason,
+                'ip_count': len(user.ip) if hasattr(user, 'ip') else 0
+            })
+            
+            # Reactivate the user
+            user_store.enable_user(user.token, f"Auto-reactivated: {reason}")
+            reactivated_count += 1
+    
+    # Log admin action
+    structured_logger.log_user_action(
+        user_token='admin',
+        action='bulk_reactivate_by_rules',
+        details={
+            'performed_by': 'admin',
+            'reactivated_count': reactivated_count,
+            'current_max_ips': current_max_ips,
+            'eligible_users': len(eligible_users)
+        },
+        admin_user='admin'
+    )
+    
+    return jsonify({
+        'success': True,
+        'reactivated_count': reactivated_count,
+        'eligible_users': eligible_users,
+        'current_rules': {
+            'max_ips_per_user': current_max_ips
+        },
+        'message': f'Reactivated {reactivated_count} users based on current anti-abuse rules'
+    })
+
+@admin_bp.route('/bulk/reactivate-selected', methods=['POST'])
+@require_admin_auth
+def bulk_reactivate_selected():
+    """Reactivate specific selected users"""
+    data = request.get_json() or {}
+    user_tokens = data.get('tokens', [])
+    reactivation_reason = data.get('reason', 'Bulk admin reactivation')
+    
+    reactivated_count = 0
+    failed_tokens = []
+    
+    for token in user_tokens:
+        try:
+            if user_store.enable_user(token, reactivation_reason):
+                reactivated_count += 1
+            else:
+                failed_tokens.append(token[:8] + '...')
+        except Exception as e:
+            failed_tokens.append(token[:8] + '...')
+            print(f"Failed to reactivate user {token[:8]}: {e}")
+    
+    # Log admin action
+    structured_logger.log_user_action(
+        user_token='admin',
+        action='bulk_reactivate_selected',
+        details={
+            'performed_by': 'admin',
+            'reactivated_count': reactivated_count,
+            'total_requested': len(user_tokens),
+            'failed_count': len(failed_tokens),
+            'reason': reactivation_reason
+        },
+        admin_user='admin'
+    )
+    
+    return jsonify({
+        'success': True,
+        'reactivated_count': reactivated_count,
+        'total_requested': len(user_tokens),
+        'failed_tokens': failed_tokens,
+        'message': f'Reactivated {reactivated_count}/{len(user_tokens)} users'
+    })
+
+@admin_bp.route('/bulk/preview-reactivation', methods=['GET'])
+@require_admin_auth
+def preview_bulk_reactivation():
+    """Preview which users would be reactivated by current rules"""
+    eligible_users = []
+    
+    # Get current anti-abuse config
+    current_max_ips = auth_config.max_ips_per_user
+    
+    for user in user_store.get_all_users():
+        if not user.is_disabled():
+            continue
+            
+        should_reactivate = False
+        reason = ""
+        
+        if user.disabled_reason == "IP address limit exceeded":
+            if len(user.ip) <= current_max_ips:
+                should_reactivate = True
+                reason = f"IP count ({len(user.ip)}) now within limit ({current_max_ips})"
+        
+        elif user.disabled_reason == "Prompt limit exceeded":
+            if hasattr(user, 'prompt_count') and not user.is_prompt_limit_exceeded():
+                should_reactivate = True
+                reason = "Prompt count now within current limits"
+        
+        if should_reactivate:
+            eligible_users.append({
+                'token': user.token[:8] + '...',
+                'disable_reason': user.disabled_reason,
+                'disabled_at': user.disabled_at.isoformat() if user.disabled_at else None,
+                'reactivation_reason': reason,
+                'ip_count': len(user.ip) if hasattr(user, 'ip') else 0,
+                'type': user.type.value if hasattr(user, 'type') else 'unknown'
+            })
+    
+    return jsonify({
+        'success': True,
+        'eligible_count': len(eligible_users),
+        'eligible_users': eligible_users,
+        'current_rules': {
+            'max_ips_per_user': current_max_ips
+        }
+    })
+
 # Public user stats endpoint (for logged-in users to view their own stats)
 @admin_bp.route('/user/stats', methods=['GET'])
 @require_auth

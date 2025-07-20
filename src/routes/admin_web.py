@@ -8,6 +8,39 @@ from ..services.user_store import user_store, UserType
 from ..services.firebase_logger import event_logger, structured_logger
 from ..config.auth import auth_config
 
+def bulk_reactivate_by_current_rules_internal():
+    """Internal function to reactivate users who no longer violate current anti-abuse rules"""
+    reactivated_count = 0
+    
+    # Get current anti-abuse config
+    current_max_ips = auth_config.max_ips_per_user
+    
+    for user in user_store.get_all_users():
+        if not user.is_disabled():
+            continue
+            
+        # Check if user should be reactivated based on current rules
+        should_reactivate = False
+        reason = ""
+        
+        if user.disabled_reason == "IP address limit exceeded":
+            if len(user.ip) <= current_max_ips:
+                should_reactivate = True
+                reason = f"Auto-reactivated: IP count ({len(user.ip)}) now within limit ({current_max_ips})"
+        
+        elif user.disabled_reason == "Prompt limit exceeded":
+            # Check against current prompt limits for temporary users
+            if hasattr(user, 'prompt_count') and not user.is_prompt_limit_exceeded():
+                should_reactivate = True
+                reason = "Auto-reactivated: Prompt count now within current limits"
+        
+        if should_reactivate:
+            # Reactivate the user
+            user_store.enable_user(user.token, reason)
+            reactivated_count += 1
+    
+    return reactivated_count
+
 admin_web_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 @admin_web_bp.route('/login', methods=['GET', 'POST'])
@@ -632,7 +665,14 @@ def anti_abuse():
                 os.environ['MAX_IPS_PER_USER'] = str(max_ips_per_user)
                 os.environ['MAX_IPS_AUTO_BAN'] = str(max_ips_auto_ban).lower()
                 
-                flash('🐱 Anti-hairball settings saved to Firebase successfully! Meow!', 'success')
+                # Check if auto-reactivation is requested
+                auto_reactivate = request.form.get('auto_reactivate') == 'on'
+                if auto_reactivate:
+                    # Trigger bulk reactivation by current rules
+                    reactivated_count = bulk_reactivate_by_current_rules_internal()
+                    flash(f'🐱 Anti-hairball settings saved and {reactivated_count} users reactivated! Meow!', 'success')
+                else:
+                    flash('🐱 Anti-hairball settings saved to Firebase successfully! Meow!', 'success')
             else:
                 flash('⚠️ Settings updated locally but Firebase save failed. Settings may not persist on restart.', 'warning')
             

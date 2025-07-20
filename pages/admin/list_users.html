@@ -31,10 +31,51 @@
         </form>
     </div>
 
+    <!-- Bulk Actions Panel -->
+    <div class="bulk-actions-panel" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #007bff;">
+        <div class="bulk-actions-header">
+            <h3><span class="cat-emoji">⚙️</span> Bulk Actions</h3>
+            <div class="bulk-action-buttons">
+                <button id="previewReactivationBtn" class="btn btn-info" onclick="previewBulkReactivation()">
+                    <span class="cat-emoji">👁️</span> Preview Reactivation
+                </button>
+                <button id="reactivateByRulesBtn" class="btn btn-success" onclick="bulkReactivateByCurrentRules()">
+                    <span class="cat-emoji">⚖️</span> Reactivate by Current Rules
+                </button>
+                <button id="reactivateSelectedBtn" class="btn btn-warning" onclick="bulkReactivateSelected()" style="display: none;">
+                    <span class="cat-emoji">🔄</span> Reactivate Selected
+                </button>
+            </div>
+        </div>
+        <div id="bulkActionsStatus" class="bulk-status" style="margin-top: 10px; display: none;"></div>
+        <div id="previewResults" class="preview-results" style="margin-top: 15px; display: none;">
+            <h4>Preview: Users Eligible for Reactivation</h4>
+            <div id="previewList"></div>
+        </div>
+    </div>
+
+    <!-- Status Filter for Disabled Users -->
+    <div class="status-filters" style="margin: 15px 0;">
+        <label><strong>Quick Filters:</strong></label>
+        <button class="btn btn-sm btn-outline-secondary" onclick="filterByStatus('disabled')">
+            <span class="cat-emoji">🚫</span> Show Disabled Only
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="filterByStatus('ip-limit')">
+            <span class="cat-emoji">🌐</span> IP Limit Violations
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="filterByStatus('all')">
+            <span class="cat-emoji">👁️</span> Show All
+        </button>
+    </div>
+
     <div class="users-table">
         <table>
             <thead>
                 <tr>
+                    <th>
+                        <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+                        <span class="cat-emoji">☑️</span>
+                    </th>
                     <th><span class="cat-emoji">🔑</span> Token</th>
                     <th><span class="cat-emoji">📝</span> Nickname</th>
                     <th><span class="cat-emoji">🏷️</span> Type</th>
@@ -49,7 +90,10 @@
                     {% for user_data in users %}
                     {% set user = user_data.user %}
                     {% set stats = user_data.stats %}
-                    <tr class="{{ 'disabled' if user.disabled_at else '' }}">
+                    <tr class="{{ 'disabled' if user.disabled_at else '' }}" data-token="{{ user.token }}" data-disabled="{{ 'true' if user.disabled_at else 'false' }}" data-disable-reason="{{ user.disabled_reason or '' }}">
+                        <td>
+                            <input type="checkbox" class="user-checkbox" value="{{ user.token }}" onchange="toggleReactivateButton()">
+                        </td>
                         <td>
                             <code>{{ user.token[:8] }}...</code>
                         </td>
@@ -61,6 +105,9 @@
                         <td>
                             {% if user.disabled_at %}
                                 <span class="status-disabled">Disabled</span>
+                                {% if user.disabled_reason %}
+                                    <div class="disable-reason">{{ user.disabled_reason }}</div>
+                                {% endif %}
                             {% else %}
                                 <span class="status-active">Active</span>
                             {% endif %}
@@ -510,5 +557,260 @@ function deleteUser(token) {
         });
     }
 }
+
+// Bulk Actions Functions
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.user-checkbox');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
+    toggleReactivateButton();
+}
+
+function toggleReactivateButton() {
+    const selected = getSelectedUserTokens();
+    const reactivateBtn = document.getElementById('reactivateSelectedBtn');
+    if (selected.length > 0) {
+        reactivateBtn.style.display = 'inline-block';
+        reactivateBtn.textContent = `🔄 Reactivate Selected (${selected.length})`;
+    } else {
+        reactivateBtn.style.display = 'none';
+    }
+}
+
+function getSelectedUserTokens() {
+    const checkboxes = document.querySelectorAll('.user-checkbox:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
+function showBulkStatus(message, type = 'info') {
+    const statusDiv = document.getElementById('bulkActionsStatus');
+    statusDiv.style.display = 'block';
+    statusDiv.className = `bulk-status alert alert-${type}`;
+    statusDiv.innerHTML = message;
+}
+
+function previewBulkReactivation() {
+    showBulkStatus('🔍 Loading preview...', 'info');
+    
+    fetch('/admin/bulk/preview-reactivation', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const previewDiv = document.getElementById('previewResults');
+            const previewList = document.getElementById('previewList');
+            
+            if (data.eligible_count === 0) {
+                previewList.innerHTML = '<p>📋 No users found eligible for reactivation based on current rules.</p>';
+                showBulkStatus('✅ Preview complete: No eligible users found', 'success');
+            } else {
+                let html = `<p><strong>📊 Found ${data.eligible_count} users eligible for reactivation:</strong></p><ul>`;
+                data.eligible_users.forEach(user => {
+                    html += `<li>
+                        <strong>${user.token}</strong> - ${user.disable_reason}
+                        <br><small style="color: #666;">➜ ${user.reactivation_reason}</small>
+                    </li>`;
+                });
+                html += `</ul><p><strong>Current Rules:</strong> Max IPs: ${data.current_rules.max_ips_per_user}</p>`;
+                previewList.innerHTML = html;
+                showBulkStatus(`✅ Preview complete: ${data.eligible_count} users eligible`, 'success');
+            }
+            previewDiv.style.display = 'block';
+        } else {
+            showBulkStatus('❌ Failed to load preview', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Preview error:', error);
+        showBulkStatus('❌ Error loading preview: ' + error.message, 'danger');
+    });
+}
+
+function bulkReactivateByCurrentRules() {
+    if (!confirm('🔄 Reactivate all users who no longer violate current anti-abuse rules?\n\nThis will automatically check all disabled users and reactivate those whose violations are now within the current limits.')) {
+        return;
+    }
+    
+    showBulkStatus('⚙️ Processing bulk reactivation...', 'info');
+    
+    fetch('/admin/bulk/reactivate-by-rules', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let message = `✅ Successfully reactivated ${data.reactivated_count} users`;
+            if (data.eligible_users.length > 0) {
+                message += '<br><strong>Reactivated users:</strong><ul>';
+                data.eligible_users.forEach(user => {
+                    message += `<li>${user.token} - ${user.reactivation_reason}</li>`;
+                });
+                message += '</ul>';
+            }
+            showBulkStatus(message, 'success');
+            
+            // Refresh page after 3 seconds
+            setTimeout(() => {
+                location.reload();
+            }, 3000);
+        } else {
+            showBulkStatus('❌ Bulk reactivation failed', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Bulk reactivation error:', error);
+        showBulkStatus('❌ Error during bulk reactivation: ' + error.message, 'danger');
+    });
+}
+
+function bulkReactivateSelected() {
+    const selectedTokens = getSelectedUserTokens();
+    if (selectedTokens.length === 0) {
+        showBulkStatus('❌ No users selected', 'warning');
+        return;
+    }
+    
+    const reason = prompt(`📝 Reason for reactivating ${selectedTokens.length} selected users:`, 'Bulk admin reactivation');
+    if (!reason) return;
+    
+    showBulkStatus(`⚙️ Reactivating ${selectedTokens.length} selected users...`, 'info');
+    
+    fetch('/admin/bulk/reactivate-selected', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            tokens: selectedTokens,
+            reason: reason
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            let message = `✅ Successfully reactivated ${data.reactivated_count}/${data.total_requested} users`;
+            if (data.failed_tokens.length > 0) {
+                message += `<br>❌ Failed to reactivate: ${data.failed_tokens.join(', ')}`;
+            }
+            showBulkStatus(message, 'success');
+            
+            // Refresh page after 2 seconds
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            showBulkStatus('❌ Failed to reactivate selected users', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Selected reactivation error:', error);
+        showBulkStatus('❌ Error reactivating selected users: ' + error.message, 'danger');
+    });
+}
+
+function filterByStatus(status) {
+    const rows = document.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const isDisabled = row.dataset.disabled === 'true';
+        const disableReason = row.dataset.disableReason || '';
+        
+        let show = false;
+        if (status === 'all') {
+            show = true;
+        } else if (status === 'disabled') {
+            show = isDisabled;
+        } else if (status === 'ip-limit') {
+            show = isDisabled && disableReason.includes('IP address limit');
+        }
+        
+        row.style.display = show ? '' : 'none';
+    });
+    
+    // Update button states
+    document.querySelectorAll('.status-filters button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
 </script>
+
+<style>
+.bulk-actions-panel {
+    border: 2px solid #e3f2fd;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e3f2fd 100%);
+}
+
+.bulk-actions-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.bulk-action-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.bulk-status {
+    padding: 10px;
+    border-radius: 5px;
+    font-weight: 500;
+}
+
+.alert-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+.alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+.alert-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+.preview-results {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    border: 1px solid #dee2e6;
+}
+
+.preview-results ul {
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 10px 0;
+}
+
+.preview-results li {
+    margin-bottom: 10px;
+    padding: 5px;
+    background: white;
+    border-radius: 3px;
+}
+
+.status-filters button.active {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    color: white;
+}
+
+.disable-reason {
+    font-size: 0.8em;
+    color: #666;
+    font-style: italic;
+    margin-top: 2px;
+}
+
+.user-checkbox {
+    margin-right: 5px;
+}
+
+tbody tr.disabled {
+    background-color: #fff5f5;
+    opacity: 0.8;
+}
+</style>
 {% endblock %}

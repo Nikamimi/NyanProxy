@@ -72,6 +72,15 @@
                 <small class="help-text">Automatically disable users when they exceed the IP limit</small>
             </div>
             
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="auto_reactivate" id="auto_reactivate">
+                    <span class="checkmark"></span>
+                    <span class="cat-emoji">🔄</span> Auto-reactivate users when rules become less strict
+                </label>
+                <small class="help-text">When enabled, users disabled for violating limits will be automatically reactivated if the new limits would allow their current usage</small>
+            </div>
+            
             <button type="submit" class="btn btn-primary save-btn">
                 <span class="cat-emoji">💾</span> Save Anti-Hairball Settings
             </button>
@@ -199,11 +208,11 @@
         font-size: 0.9em;
     }
     
-    .form-group {
+    .form-group, .setting-group {
         margin-bottom: 25px;
     }
     
-    .form-group label {
+    .form-group label:not(.checkbox-label), .setting-group label:not(.checkbox-label) {
         display: block;
         margin-bottom: 8px;
         font-weight: 600;
