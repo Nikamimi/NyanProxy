@@ -603,8 +603,22 @@ def openai_chat_completions():
             if response.status_code == 200:
                 model = request_json.get('model', 'gpt-3.5-turbo')
                 
-                # For streaming requests, count prompt tokens and estimate completion tokens from stream
-                if is_streaming:
+                # First, always check if OpenAI provided usage data (like Anthropic does)
+                try:
+                    response_data = json.loads(response_content)
+                    if 'usage' in response_data:
+                        tokens = response_data['usage']
+                        print(f"🐱 DEBUG: OpenAI provided usage data for {model} (streaming: {is_streaming}): input={tokens.get('prompt_tokens', 0)}, output={tokens.get('completion_tokens', 0)}")
+                        # Skip all the complex streaming logic if we have usage data
+                    elif is_streaming:
+                        print(f"🐱 DEBUG: No usage data from OpenAI for streaming {model}, attempting chunk parsing...")
+                        # Only do complex streaming parsing if no usage data is available
+                except (json.JSONDecodeError, Exception) as e:
+                    print(f"🚫 DEBUG: Could not parse OpenAI response as JSON for {model}: {e}")
+                    tokens = None
+                
+                # For streaming requests without usage data, count prompt tokens and estimate completion tokens from stream
+                if is_streaming and tokens is None:
                     try:
                         # Count prompt tokens
                         token_result = unified_tokenizer.count_tokens(
@@ -812,37 +826,38 @@ def openai_chat_completions():
                     except Exception as e:
                         print(f"🚫 DEBUG: Error counting tokens for streaming {model}: {e}")
                         pass
-                else:
-                    # Non-streaming request - try to get full token counts
+                elif tokens is None:
+                    # Non-streaming request without usage data - use simple fallback like Anthropic
                     try:
-                        response_data = json.loads(response_content)
-                        if 'usage' in response_data:
-                            tokens = response_data['usage']
-                            print(f"🐱 DEBUG: Non-streaming {model} - got usage from API: input={tokens.get('prompt_tokens', 0)}, output={tokens.get('completion_tokens', 0)}")
-                        else:
-                            # Fallback: estimate tokens using advanced tokenizer
-                            response_text = ""
-                            if 'choices' in response_data:
-                                for choice in response_data['choices']:
-                                    if 'message' in choice and 'content' in choice['message']:
-                                        response_text += choice['message']['content'] + " "
-                            
-                            print(f"🐱 DEBUG: Non-streaming {model} - no usage data, extracted response text: '{response_text[:100]}...' (length: {len(response_text)})")
-                            
-                            token_result = unified_tokenizer.count_tokens(
-                                request_data=request_json,
-                                service="openai",
-                                model=model,
-                                response_text=response_text.strip()
-                            )
-                            tokens = {
-                                'prompt_tokens': token_result['prompt_tokens'],
-                                'completion_tokens': token_result['completion_tokens'],
-                                'total_tokens': token_result['total_tokens']
-                            }
-                            print(f"🐱 DEBUG: Non-streaming {model} - tokenizer result: input={tokens['prompt_tokens']}, output={tokens['completion_tokens']}")
-                    except (json.JSONDecodeError, Exception):
-                        # Still try to count tokens from request at least
+                        if 'response_data' not in locals():
+                            response_data = json.loads(response_content)
+                        
+                        # Extract response text from choices (like Anthropic extracts from content)
+                        response_text = ""
+                        if 'choices' in response_data:
+                            for choice in response_data['choices']:
+                                if 'message' in choice and 'content' in choice['message']:
+                                    response_text += choice['message']['content'] + " "
+                        
+                        print(f"🐱 DEBUG: Non-streaming {model} - no usage data, extracted response text: '{response_text[:100]}...' (length: {len(response_text)})")
+                        
+                        # Use unified tokenizer (same as Anthropic approach)
+                        token_result = unified_tokenizer.count_tokens(
+                            request_data=request_json,
+                            service="openai",
+                            model=model,
+                            response_text=response_text.strip() if response_text else None
+                        )
+                        tokens = {
+                            'prompt_tokens': token_result['prompt_tokens'],
+                            'completion_tokens': token_result['completion_tokens'],
+                            'total_tokens': token_result['total_tokens']
+                        }
+                        print(f"🐱 DEBUG: Non-streaming {model} - tokenizer result: input={tokens['prompt_tokens']}, output={tokens['completion_tokens']}")
+                        
+                    except Exception as e:
+                        print(f"🚫 DEBUG: Non-streaming fallback failed for {model}: {e}")
+                        # Minimal fallback - just count input tokens
                         try:
                             token_result = unified_tokenizer.count_tokens(
                                 request_data=request_json,
@@ -855,7 +870,7 @@ def openai_chat_completions():
                                 'total_tokens': token_result['prompt_tokens']
                             }
                         except Exception:
-                            pass
+                            tokens = None
             
             metrics.track_request('chat_completions', response_time, error=response.status_code >= 400, tokens=tokens, service='openai')
             
