@@ -2,7 +2,6 @@
 <html>
 <head>
     <title>{{config.brand_emoji}} {{config.brand_name}} - {{config.brand_description}}</title>
-    <meta http-equiv="refresh" content="{{config.refresh_interval}}">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
         
@@ -715,6 +714,66 @@
         .mood-playful { background: linear-gradient(135deg, #ffd54f 0%, #ffecb3 100%); }
         .mood-sleepy { background: linear-gradient(135deg, #bbdefb 0%, #e3f2fd 100%); }
         .mood-grumpy { background: linear-gradient(135deg, #ffcdd2 0%, #f8bbd9 100%); }
+        
+        /* Model Card Styles */
+        .model-status-card {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            padding: 15px;
+            border-left: 4px solid #667eea;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        .model-status-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .model-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 0.9em;
+            text-transform: capitalize;
+        }
+        
+        .model-cost {
+            color: #666;
+            font-size: 0.8em;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+        
+        .model-metrics {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+        }
+        
+        .model-metric {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .model-metric-value {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .model-metric-label {
+            font-size: 0.7em;
+            color: #666;
+            margin-top: 2px;
+        }
     </style>
 </head>
 <body>
@@ -853,11 +912,11 @@
                     <div class="metric-label">Current Prompters <span class="cat-emoji">👥</span></div>
                 </div>
                 <div class="metric status-good">
-                    <div class="metric-value">{{total_prompts}}</div>
+                    <div class="metric-value" id="totalPrompts">Loading...</div>
                     <div class="metric-label">Total Prompts <span class="cat-emoji">📈</span></div>
                 </div>
                 <div class="metric status-good">
-                    <div class="metric-value">{{total_tokens}}</div>
+                    <div class="metric-value" id="totalSystemTokens">Loading...</div>
                     <div class="metric-label">Total Tokens <span class="cat-emoji">🔢</span></div>
                 </div>
                 <div class="metric status-good">
@@ -892,15 +951,14 @@
                                 </span>
                             </div>
                             
-                            <!-- Token counters for each service -->
-                            <div style="display: flex; gap: 15px; margin-bottom: 10px; flex-wrap: wrap;">
-                                <div class="metric status-good" style="padding: 10px; margin: 0; display: inline-block; min-width: 80px;">
-                                    <div class="metric-value" style="font-size: 1.2em;">{{health.successful_requests|default(0)}}</div>
-                                    <div class="metric-label" style="font-size: 0.8em;">Prompts</div>
-                                </div>
-                                <div class="metric status-good" style="padding: 10px; margin: 0; display: inline-block; min-width: 80px;">
-                                    <div class="metric-value" style="font-size: 1.2em;">{{health.total_tokens|default(0)}}</div>
-                                    <div class="metric-label" style="font-size: 0.8em;">Tokens</div>
+                            <!-- Per-model usage breakdown -->
+                            <div class="model-usage-breakdown" id="{{service}}-models" style="margin-top: 15px;">
+                                <h5 style="margin: 10px 0; color: #666; font-size: 1em;">📊 Active Models</h5>
+                                <div class="models-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                                    <!-- Models will be loaded here via JavaScript -->
+                                    <div class="loading-models" style="grid-column: 1 / -1; text-align: center; padding: 20px; color: #666;">
+                                        <span class="cat-emoji">🐱</span> Loading models...
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -914,7 +972,7 @@
         </div>
         
         <div class="refresh">
-            <span class="cat-emoji">😸</span> Dashboard refreshes every {{config.refresh_interval}} seconds <span class="cat-emoji">🔄</span>
+            <span class="cat-emoji">😸</span> Live dashboard with real-time updates <span class="cat-emoji">🔄</span>
             <br>Made with <span class="cat-emoji">❤️</span> and lots of <span class="cat-emoji">☕</span> for your AI needs!
         </div>
     </div>
@@ -951,12 +1009,14 @@
         
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            // Check if user is already logged in
-            const savedToken = localStorage.getItem('userToken');
-            if (savedToken) {
-                currentUserToken = savedToken;
-                loadUserStats();
-            }
+            // Load model usage stats for each provider
+            loadProviderModelStats();
+            
+            // Load global totals for System Metrics
+            loadGlobalTotals();
+            
+            // Check for existing session (IP-based)
+            loadExistingSession();
         });
         
         // Login Modal Functions
@@ -985,8 +1045,12 @@
             
             if (userToken.trim()) {
                 currentUserToken = userToken;
-                localStorage.setItem('userToken', userToken);
                 closeLoginModal();
+                
+                // Save session to server (IP-based)
+                saveUserSession(userToken);
+                
+                // Load user stats
                 loadUserStats();
             }
         });
@@ -995,7 +1059,9 @@
         function logout() {
             currentUserToken = null;
             userStats = null;
-            localStorage.removeItem('userToken');
+            
+            // Clear server session
+            clearUserSession();
             
             // Hide user stats and show login button
             document.getElementById('userStatsSection').style.display = 'none';
@@ -1126,6 +1192,228 @@
                 closeLoginModal();
             }
         });
+        
+        // Load provider model stats for the Key Status section
+        async function loadProviderModelStats() {
+            try {
+                const response = await fetch('/admin/api/model-usage-stats', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const modelStats = await response.json();
+                    displayProviderModelStats(modelStats);
+                } else {
+                    console.error('Failed to load model stats:', response.status);
+                    // Show fallback content
+                    displayProviderModelStats({});
+                }
+            } catch (error) {
+                console.error('Error loading model stats:', error);
+                displayProviderModelStats({});
+            }
+        }
+        
+        // Display model stats for each provider
+        function displayProviderModelStats(modelStats) {
+            // Get all provider elements
+            const providers = ['openai', 'anthropic', 'google', 'mistral', 'groq', 'cohere'];
+            
+            providers.forEach(provider => {
+                const providerElement = document.getElementById(`${provider}-models`);
+                if (!providerElement) return;
+                
+                const modelsGrid = providerElement.querySelector('.models-grid');
+                if (!modelsGrid) return;
+                
+                // Get models for this provider
+                const providerModels = modelStats[provider] || {};
+                const modelKeys = Object.keys(providerModels);
+                
+                if (modelKeys.length === 0) {
+                    modelsGrid.innerHTML = `
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 15px; color: #999; font-style: italic;">
+                            <span class="cat-emoji">😸</span> No models configured for ${provider}
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Create model cards
+                let modelsHTML = '';
+                modelKeys.forEach(modelId => {
+                    const modelData = providerModels[modelId];
+                    const modelName = modelData.model_name || unsanitizeModelName(modelId);
+                    const totalTokens = (modelData.total_input_tokens || 0) + (modelData.total_output_tokens || 0);
+                    const cost = modelData.total_cost || 0;
+                    const requests = modelData.total_requests || 0;
+                    const hasUsage = modelData.has_usage || false;
+                    const isPremium = modelData.is_premium || false;
+                    const catPersonality = modelData.cat_personality || 'curious';
+                    
+                    // Get cat emoji based on personality
+                    const catEmojis = {
+                        'curious': '🙀',
+                        'playful': '😸',
+                        'sleepy': '😴',
+                        'grumpy': '😾',
+                        'smart': '🤓',
+                        'fast': '💨'
+                    };
+                    const catEmoji = catEmojis[catPersonality] || '😺';
+                    
+                    // Style the card differently if no usage yet
+                    const cardClass = hasUsage ? 'model-status-card' : 'model-status-card';
+                    const cardStyle = hasUsage ? '' : 'opacity: 0.7; border-left-color: #ccc;';
+                    const statusBadge = hasUsage ? '' : '<span style="font-size: 0.7em; color: #999; background: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 4px; margin-left: 5px;">Available</span>';
+                    const premiumBadge = isPremium ? '<span style="font-size: 0.7em; color: #ff6b6b; background: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 4px; margin-left: 5px;">Premium</span>' : '';
+                    
+                    modelsHTML += `
+                        <div class="${cardClass}" style="${cardStyle}">
+                            <div class="model-header">
+                                <div class="model-name">${catEmoji} ${modelName}${statusBadge}${premiumBadge}</div>
+                                <div class="model-cost">${hasUsage ? '$' + cost.toFixed(4) : 'Ready'}</div>
+                            </div>
+                            <div class="model-metrics">
+                                <div class="model-metric">
+                                    <div class="model-metric-value">${requests.toLocaleString()}</div>
+                                    <div class="model-metric-label">Prompts</div>
+                                </div>
+                                <div class="model-metric">
+                                    <div class="model-metric-value">${totalTokens.toLocaleString()}</div>
+                                    <div class="model-metric-label">Tokens</div>
+                                </div>
+                                <div class="model-metric">
+                                    <div class="model-metric-value">${hasUsage ? '$' + cost.toFixed(3) : '$0.000'}</div>
+                                    <div class="model-metric-label">Cost</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                modelsGrid.innerHTML = modelsHTML;
+            });
+        }
+        
+        // Unsanitize model names (reverse of the sanitization process)
+        function unsanitizeModelName(key) {
+            // Convert sanitized key back to original model ID
+            let result = key
+                .replace(/__SLASH__/g, '/')
+                .replace(/__HASH__/g, '#')
+                .replace(/__DOLLAR__/g, '$')
+                .replace(/__LBRACKET__/g, '[')
+                .replace(/__RBRACKET__/g, ']');
+            
+            // Replace patterns like gpt-4_1 back to gpt-4.1
+            result = result.replace(/(\d)_(\d)/g, '$1.$2');
+            
+            return result;
+        }
+        
+        // Load global totals for System Metrics
+        async function loadGlobalTotals() {
+            try {
+                const response = await fetch('/admin/api/global-totals', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const totals = await response.json();
+                    
+                    // Update Total Prompts and Total Tokens with persistent data
+                    document.getElementById('totalPrompts').textContent = totals.total_requests.toLocaleString();
+                    document.getElementById('totalSystemTokens').textContent = totals.total_tokens.toLocaleString();
+                    
+                    console.log('🐱 Loaded persistent global totals:', totals);
+                } else {
+                    console.error('Failed to load global totals:', response.status);
+                    // Show fallback values
+                    document.getElementById('totalPrompts').textContent = '0';
+                    document.getElementById('totalSystemTokens').textContent = '0';
+                }
+            } catch (error) {
+                console.error('Error loading global totals:', error);
+                // Show fallback values
+                document.getElementById('totalPrompts').textContent = '0';
+                document.getElementById('totalSystemTokens').textContent = '0';
+            }
+        }
+        
+        // Session Management Functions
+        async function loadExistingSession() {
+            try {
+                const response = await fetch('/admin/api/session/load', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const sessionData = await response.json();
+                    
+                    if (sessionData.has_session) {
+                        currentUserToken = sessionData.user_token;
+                        console.log('🐱 Restored session for IP:', sessionData.user_info);
+                        
+                        // Load user stats automatically
+                        loadUserStats();
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading existing session:', error);
+            }
+        }
+        
+        async function saveUserSession(userToken) {
+            try {
+                const response = await fetch('/admin/api/session/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_token: userToken
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('🐱 Session saved for IP:', result.ip);
+                } else {
+                    console.error('Failed to save session:', response.status);
+                }
+            } catch (error) {
+                console.error('Error saving session:', error);
+            }
+        }
+        
+        async function clearUserSession() {
+            try {
+                const response = await fetch('/admin/api/session/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    console.log('🐱 Session cleared');
+                } else {
+                    console.error('Failed to clear session:', response.status);
+                }
+            } catch (error) {
+                console.error('Error clearing session:', error);
+            }
+        }
     </script>
 </body>
 </html>

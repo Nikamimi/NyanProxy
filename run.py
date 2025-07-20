@@ -4,9 +4,28 @@ Startup script for NyanProxy
 """
 import sys
 import os
+import signal
+import atexit
 
 # Add the project root to Python path so imports work correctly
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+def shutdown_handler(signum=None, frame=None):
+    """Gracefully handle shutdown"""
+    print("🐱 Shutting down NyanProxy...")
+    try:
+        from src.services.model_families import model_manager
+        model_manager.shutdown()
+    except Exception as e:
+        print(f"Error during shutdown: {e}")
+    
+    if signum is not None:
+        sys.exit(0)
+
+# Register shutdown handlers
+signal.signal(signal.SIGINT, shutdown_handler)
+signal.signal(signal.SIGTERM, shutdown_handler)
+atexit.register(shutdown_handler)
 
 # Run the application
 if __name__ == '__main__':

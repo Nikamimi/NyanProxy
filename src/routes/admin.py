@@ -812,3 +812,264 @@ def get_my_user_stats():
     }
     
     return jsonify(stats_response)
+
+@admin_bp.route('/model-usage-stats', methods=['GET'])
+def get_model_usage_stats():
+    """Get all active/whitelisted models with their usage statistics for the dashboard"""
+    try:
+        from ..services.model_families import model_manager, AIProvider
+        
+        # Get global usage stats for models that have been used
+        global_stats = model_manager.get_usage_stats()
+        
+        # Organize stats by provider, including all whitelisted models
+        provider_stats = {}
+        
+        # Iterate through all providers and their whitelisted models
+        for provider in AIProvider:
+            provider_key = provider.value
+            whitelisted_models = model_manager.get_whitelisted_models(provider)
+            
+            if not whitelisted_models:
+                continue
+                
+            provider_stats[provider_key] = {}
+            
+            for model_info in whitelisted_models:
+                model_id = model_info.model_id
+                sanitized_key = model_manager.sanitize_key(model_id)
+                
+                # Get usage stats if available, otherwise use zeros
+                model_stats = global_stats.get(model_id, {})
+                
+                provider_stats[provider_key][sanitized_key] = {
+                    'model_name': model_info.display_name,
+                    'model_id': model_id,
+                    'description': model_info.description,
+                    'cat_personality': model_info.cat_personality,
+                    'is_premium': model_info.is_premium,
+                    'total_requests': model_stats.get('total_requests', 0),
+                    'total_input_tokens': model_stats.get('total_input_tokens', 0),
+                    'total_output_tokens': model_stats.get('total_output_tokens', 0),
+                    'total_cost': model_stats.get('total_cost', 0.0),
+                    'success_rate': model_stats.get('success_rate', 100.0),
+                    'last_used': model_stats.get('last_used'),
+                    'first_used': model_stats.get('first_used'),
+                    'has_usage': model_id in global_stats
+                }
+        
+        return jsonify(provider_stats)
+        
+    except Exception as e:
+        # Log the error but return empty stats to avoid breaking the dashboard
+        print(f"Error fetching model usage stats: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({})
+
+@admin_bp.route('/save-model-stats', methods=['POST'])
+@require_admin_auth
+def save_model_stats():
+    """Manually save model usage statistics to Firebase"""
+    try:
+        from ..services.model_families import model_manager
+        
+        # Force save current stats
+        model_manager.save_usage_stats_sync()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Model usage statistics saved successfully'
+        })
+        
+    except Exception as e:
+        print(f"Error saving model usage stats: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Error saving stats: {str(e)}'
+        }), 500
+
+@admin_bp.route('/debug-model-stats', methods=['GET'])
+@require_admin_auth  
+def debug_model_stats():
+    """Debug endpoint to see current model stats in memory and Firebase"""
+    try:
+        from ..services.model_families import model_manager
+        
+        # Get current in-memory stats
+        memory_stats = {}
+        with model_manager.lock:
+            for model_id, stats in model_manager.global_usage_stats.items():
+                memory_stats[model_id] = {
+                    'total_requests': stats.total_requests,
+                    'total_input_tokens': stats.total_input_tokens, 
+                    'total_output_tokens': stats.total_output_tokens,
+                    'total_cost': stats.total_cost,
+                    'last_used': stats.last_used.isoformat() if stats.last_used else None
+                }
+        
+        # Get Firebase data
+        firebase_stats = {}
+        if model_manager.firebase_db:
+            try:
+                stats_ref = model_manager.firebase_db.child('global_usage_stats')
+                firebase_data = stats_ref.get()
+                if firebase_data:
+                    for sanitized_key, stats_data in firebase_data.items():
+                        model_id = model_manager.unsanitize_key(sanitized_key)
+                        firebase_stats[model_id] = stats_data
+            except Exception as e:
+                firebase_stats = {'error': str(e)}
+        
+        return jsonify({
+            'memory_stats': memory_stats,
+            'firebase_stats': firebase_stats,
+            'save_counter': model_manager._save_counter,
+            'firebase_connected': model_manager.firebase_db is not None
+        })
+        
+    except Exception as e:
+        print(f"Error in debug endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/global-totals', methods=['GET'])
+def get_global_totals():
+    """Get global totals for System Metrics (public endpoint - no auth required)"""
+    try:
+        from ..services.model_families import model_manager
+        
+        # Get global totals from model manager
+        global_totals = model_manager.get_global_totals()
+        
+        # Calculate total tokens (input + output)
+        total_tokens = (global_totals.get('total_input_tokens', 0) + 
+                       global_totals.get('total_output_tokens', 0))
+        
+        return jsonify({
+            'total_requests': global_totals.get('total_requests', 0),
+            'total_tokens': total_tokens,
+            'total_input_tokens': global_totals.get('total_input_tokens', 0),
+            'total_output_tokens': global_totals.get('total_output_tokens', 0),
+            'total_cost': global_totals.get('total_cost', 0.0),
+            'total_models_used': global_totals.get('total_models_used', 0),
+            'first_request': global_totals.get('first_request'),
+            'last_request': global_totals.get('last_request')
+        })
+        
+    except Exception as e:
+        print(f"Error fetching global totals: {e}")
+        # Return zeros instead of error to avoid breaking dashboard
+        return jsonify({
+            'total_requests': 0,
+            'total_tokens': 0,
+            'total_input_tokens': 0,
+            'total_output_tokens': 0,
+            'total_cost': 0.0,
+            'total_models_used': 0,
+            'first_request': None,
+            'last_request': None
+        })
+
+@admin_bp.route('/session/save', methods=['POST'])
+def save_user_session():
+    """Save user session based on IP address"""
+    try:
+        data = request.get_json()
+        user_token = data.get('user_token')
+        
+        if not user_token:
+            return jsonify({'success': False, 'message': 'No user token provided'}), 400
+        
+        # Get client IP address
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR', 'unknown'))
+        if ',' in client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+        
+        # Validate the user token exists
+        from ..services.user_store import user_store
+        user = user_store.get_user_by_token(user_token)
+        if not user:
+            return jsonify({'success': False, 'message': 'Invalid user token'}), 401
+        
+        # Store session in a simple in-memory dict (could be moved to Firebase for persistence)
+        if not hasattr(save_user_session, 'sessions'):
+            save_user_session.sessions = {}
+        
+        save_user_session.sessions[client_ip] = {
+            'user_token': user_token,
+            'created_at': datetime.now().isoformat(),
+            'user_info': {
+                'token': user.token,
+                'type': user.type.value,
+                'nickname': user.nickname
+            }
+        }
+        
+        return jsonify({
+            'success': True,
+            'message': 'Session saved',
+            'ip': client_ip
+        })
+        
+    except Exception as e:
+        print(f"Error saving user session: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@admin_bp.route('/session/load', methods=['GET'])
+def load_user_session():
+    """Load user session based on IP address"""
+    try:
+        # Get client IP address
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR', 'unknown'))
+        if ',' in client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+        
+        # Check if session exists
+        if not hasattr(save_user_session, 'sessions'):
+            return jsonify({'has_session': False})
+        
+        session_data = save_user_session.sessions.get(client_ip)
+        if not session_data:
+            return jsonify({'has_session': False})
+        
+        # Validate the stored token still exists
+        from ..services.user_store import user_store
+        user = user_store.get_user_by_token(session_data['user_token'])
+        if not user:
+            # Remove invalid session
+            del save_user_session.sessions[client_ip]
+            return jsonify({'has_session': False})
+        
+        return jsonify({
+            'has_session': True,
+            'user_token': session_data['user_token'],
+            'user_info': session_data['user_info'],
+            'created_at': session_data['created_at']
+        })
+        
+    except Exception as e:
+        print(f"Error loading user session: {e}")
+        return jsonify({'has_session': False})
+
+@admin_bp.route('/session/clear', methods=['POST'])
+def clear_user_session():
+    """Clear user session based on IP address"""
+    try:
+        # Get client IP address
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR', 'unknown'))
+        if ',' in client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+        
+        # Remove session if it exists
+        if hasattr(save_user_session, 'sessions') and client_ip in save_user_session.sessions:
+            del save_user_session.sessions[client_ip]
+        
+        return jsonify({'success': True, 'message': 'Session cleared'})
+        
+    except Exception as e:
+        print(f"Error clearing user session: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500

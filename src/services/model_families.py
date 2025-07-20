@@ -197,6 +197,7 @@ class ModelFamilyManager:
             'last_request': None
         }
         self.firebase_db = None
+        self._save_counter = 0  # Counter to batch saves
         
         # Initialize with default models
         self._initialize_default_models()
@@ -216,6 +217,9 @@ class ModelFamilyManager:
         
         # Load global totals from Firebase
         self._load_global_totals()
+        
+        # Load global usage stats from Firebase
+        self._load_global_usage_stats()
     
     def _initialize_default_models(self):
         """Initialize with default model configurations"""
@@ -539,8 +543,11 @@ class ModelFamilyManager:
             unique_models = set(self.global_usage_stats.keys())
             self.global_totals['total_models_used'] = len(unique_models)
             
-            # Save to Firebase asynchronously
-            self._save_global_totals()
+            # Save to Firebase periodically for better persistence (every 3 requests)
+            self._save_counter += 1
+            if self._save_counter % 3 == 0:
+                self._save_global_totals()
+                self._save_global_usage_stats()
             
             return cost
     
@@ -619,6 +626,130 @@ class ModelFamilyManager:
             
         except Exception as e:
             print(f"Error saving global totals: {e}")
+    
+    def _load_global_usage_stats(self):
+        """Load global usage stats from Firebase"""
+        if not self.firebase_db:
+            return
+            
+        try:
+            import threading
+            loaded_stats = [None]
+            
+            def load_stats():
+                try:
+                    stats_ref = self.firebase_db.child('global_usage_stats')
+                    data = stats_ref.get()
+                    
+                    if data:
+                        # Convert data back to ModelUsageStats objects
+                        for sanitized_model_id, stats_data in data.items():
+                            if isinstance(stats_data, dict) and 'model_id' in stats_data:
+                                # Unsanitize the model ID
+                                model_id = self.unsanitize_key(sanitized_model_id)
+                                # Create ModelUsageStats object from saved data
+                                usage_stats = ModelUsageStats.from_dict(stats_data)
+                                loaded_stats[0] = loaded_stats[0] or {}
+                                loaded_stats[0][model_id] = usage_stats
+                        
+                        if loaded_stats[0]:
+                            print(f"🐱 Loaded global usage stats from Firebase: {len(loaded_stats[0])} models")
+                except Exception as e:
+                    print(f"Failed to load global usage stats from Firebase: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            thread = threading.Thread(target=load_stats)
+            thread.daemon = True
+            thread.start()
+            thread.join(timeout=5)
+            
+            if loaded_stats[0]:
+                with self.lock:
+                    self.global_usage_stats.update(loaded_stats[0])
+                    
+        except Exception as e:
+            print(f"Error loading global usage stats: {e}")
+    
+    def _save_global_usage_stats(self):
+        """Save global usage stats to Firebase (async)"""
+        if not self.firebase_db:
+            print("🐱 [DEBUG] No Firebase DB connection, skipping save")
+            return
+            
+        try:
+            import threading
+            
+            def save_stats():
+                try:
+                    with self.lock:
+                        stats_to_save = {}
+                        for model_id, usage_stats in self.global_usage_stats.items():
+                            # Sanitize model ID for Firebase key
+                            sanitized_key = self.sanitize_key(model_id)
+                            stats_dict = usage_stats.to_dict()
+                            stats_to_save[sanitized_key] = stats_dict
+                    
+                    stats_ref = self.firebase_db.child('global_usage_stats')
+                    stats_ref.set(stats_to_save)
+                    print(f"🐱 Saved global usage stats to Firebase: {len(stats_to_save)} models")
+                except Exception as e:
+                    print(f"Failed to save global usage stats to Firebase: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            thread = threading.Thread(target=save_stats)
+            thread.daemon = True
+            thread.start()
+            
+        except Exception as e:
+            print(f"Error saving global usage stats: {e}")
+    
+    def save_usage_stats_sync(self):
+        """Save usage stats synchronously (for manual triggers)"""
+        if not self.firebase_db:
+            return
+            
+        try:
+            import threading
+            success = [False]
+            
+            def save_stats():
+                try:
+                    with self.lock:
+                        stats_to_save = {}
+                        for model_id, usage_stats in self.global_usage_stats.items():
+                            # Sanitize model ID for Firebase key
+                            sanitized_key = self.sanitize_key(model_id)
+                            stats_to_save[sanitized_key] = usage_stats.to_dict()
+                    
+                    stats_ref = self.firebase_db.child('global_usage_stats')
+                    stats_ref.set(stats_to_save)
+                    success[0] = True
+                    print(f"🐱 Saved global usage stats to Firebase (sync): {len(stats_to_save)} models")
+                except Exception as e:
+                    print(f"Failed to save global usage stats to Firebase (sync): {e}")
+            
+            thread = threading.Thread(target=save_stats)
+            thread.daemon = True
+            thread.start()
+            thread.join(timeout=10)  # Longer timeout for sync operation
+            
+            if not success[0]:
+                print("Warning: Synchronous save of usage stats may have failed or timed out")
+                
+        except Exception as e:
+            print(f"Error in sync save of global usage stats: {e}")
+    
+    def shutdown(self):
+        """Save all data before shutdown"""
+        print("🐱 Saving model usage data before shutdown...")
+        try:
+            self.save_usage_stats_sync()
+            self._save_global_totals()
+            print("🐱 Model usage data saved successfully")
+        except Exception as e:
+            print(f"Error saving data during shutdown: {e}")
     
     def get_global_totals(self) -> Dict[str, Any]:
         """Get global usage totals across all models and users"""
