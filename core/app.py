@@ -622,29 +622,57 @@ def openai_chat_completions():
                                 # For streaming responses, content may be in different formats
                                 # Try to extract text from Server-Sent Events (SSE) format
                                 content_str = response_content.decode('utf-8') if isinstance(response_content, bytes) else str(response_content)
+                                print(f"🐱 DEBUG: Raw streaming content for {model} (first 200 chars): '{content_str[:200]}...'")
                                 
-                                # Parse SSE data chunks
+                                # Parse SSE data chunks - try multiple patterns
                                 import re
+                                
+                                # Pattern 1: Standard SSE format with data: prefix
                                 data_chunks = re.findall(r'data: ({.*?})', content_str, re.DOTALL)
+                                if not data_chunks:
+                                    # Pattern 2: Direct JSON objects (some APIs return this)
+                                    data_chunks = re.findall(r'({.*?"choices".*?})', content_str, re.DOTALL)
+                                if not data_chunks:
+                                    # Pattern 3: Split by newlines and find JSON-like strings
+                                    lines = content_str.split('\n')
+                                    data_chunks = [line.strip() for line in lines if line.strip().startswith('{') and 'choices' in line]
+                                
+                                print(f"🐱 DEBUG: Found {len(data_chunks)} data chunks for {model}")
+                                
                                 for chunk in data_chunks:
                                     try:
-                                        chunk_data = json.loads(chunk)
+                                        # Clean up the chunk if it has SSE prefixes
+                                        clean_chunk = chunk.strip()
+                                        if clean_chunk.startswith('data: '):
+                                            clean_chunk = clean_chunk[6:].strip()
+                                        
+                                        chunk_data = json.loads(clean_chunk)
                                         if 'choices' in chunk_data:
                                             for choice in chunk_data['choices']:
                                                 if 'delta' in choice and 'content' in choice['delta']:
-                                                    response_text += choice['delta']['content']
-                                    except (json.JSONDecodeError, KeyError):
+                                                    content = choice['delta']['content']
+                                                    response_text += content
+                                                elif 'message' in choice and 'content' in choice['message']:
+                                                    # Some formats put content directly in message
+                                                    content = choice['message']['content']
+                                                    response_text += content
+                                    except (json.JSONDecodeError, KeyError) as e:
+                                        print(f"🚫 DEBUG: Failed to parse chunk for {model}: {e}")
                                         continue
                             
                             # Estimate completion tokens from collected response text
                             if response_text.strip():
+                                print(f"🐱 DEBUG: Extracted response text for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
                                 completion_token_result = unified_tokenizer.count_tokens(
-                                    request_data={"text": response_text},
+                                    request_data=request_json,  # Use original request data
                                     service="openai",
                                     model=model,
                                     response_text=response_text.strip()
                                 )
-                                completion_tokens = completion_token_result.get('completion_tokens', len(response_text.split()) // 1.3)
+                                completion_tokens = completion_token_result.get('completion_tokens', 0)
+                                print(f"🐱 DEBUG: Tokenizer returned {completion_tokens} completion tokens for {model}")
+                            else:
+                                print(f"🚫 DEBUG: No response text extracted for streaming {model}")
                             
                         except Exception as e:
                             # Fallback: estimate based on content length
@@ -669,6 +697,7 @@ def openai_chat_completions():
                         response_data = json.loads(response_content)
                         if 'usage' in response_data:
                             tokens = response_data['usage']
+                            print(f"🐱 DEBUG: Non-streaming {model} - got usage from API: input={tokens.get('prompt_tokens', 0)}, output={tokens.get('completion_tokens', 0)}")
                         else:
                             # Fallback: estimate tokens using advanced tokenizer
                             response_text = ""
@@ -676,6 +705,8 @@ def openai_chat_completions():
                                 for choice in response_data['choices']:
                                     if 'message' in choice and 'content' in choice['message']:
                                         response_text += choice['message']['content'] + " "
+                            
+                            print(f"🐱 DEBUG: Non-streaming {model} - no usage data, extracted response text: '{response_text[:100]}...' (length: {len(response_text)})")
                             
                             token_result = unified_tokenizer.count_tokens(
                                 request_data=request_json,
@@ -688,6 +719,7 @@ def openai_chat_completions():
                                 'completion_tokens': token_result['completion_tokens'],
                                 'total_tokens': token_result['total_tokens']
                             }
+                            print(f"🐱 DEBUG: Non-streaming {model} - tokenizer result: input={tokens['prompt_tokens']}, output={tokens['completion_tokens']}")
                     except (json.JSONDecodeError, Exception):
                         # Still try to count tokens from request at least
                         try:
