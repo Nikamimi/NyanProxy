@@ -643,6 +643,7 @@ def openai_chat_completions():
                                 for i, sample_chunk in enumerate(data_chunks[:3]):
                                     print(f"🐱 DEBUG: Sample chunk {i+1} for {model}: '{sample_chunk[:150]}...'")
                                 
+                                chunks_with_content = 0
                                 for chunk in data_chunks:
                                     try:
                                         # Clean up the chunk if it has SSE prefixes
@@ -680,11 +681,20 @@ def openai_chat_completions():
                                                 continue
                                         
                                         if 'choices' in chunk_data:
-                                            for choice in chunk_data['choices']:
+                                            for choice_idx, choice in enumerate(chunk_data['choices']):
+                                                # Debug what's actually in the choice
+                                                if choice_idx < 3:  # Only debug first few choices
+                                                    print(f"🐱 DEBUG: Choice {choice_idx} structure for {model}: {list(choice.keys())}")
+                                                    if 'delta' in choice:
+                                                        print(f"🐱 DEBUG: Delta structure: {list(choice['delta'].keys())}")
+                                                        if 'content' in choice['delta']:
+                                                            print(f"🐱 DEBUG: Delta content: '{choice['delta']['content']}'")
+                                                
                                                 if 'delta' in choice and 'content' in choice['delta']:
                                                     content = choice['delta']['content']
                                                     if content:  # Only add non-empty content
                                                         response_text += content
+                                                        chunks_with_content += 1
                                                         if len(response_text) <= 50:  # Debug first bits of content
                                                             print(f"🐱 DEBUG: Added delta content for {model}: '{content}'")
                                                 elif 'message' in choice and 'content' in choice['message']:
@@ -692,6 +702,7 @@ def openai_chat_completions():
                                                     content = choice['message']['content']
                                                     if content:  # Only add non-empty content
                                                         response_text += content
+                                                        chunks_with_content += 1
                                                         if len(response_text) <= 50:  # Debug first bits of content
                                                             print(f"🐱 DEBUG: Added message content for {model}: '{content}'")
                                     except Exception as e:
@@ -701,6 +712,7 @@ def openai_chat_completions():
                                         continue
                             
                             # Estimate completion tokens from collected response text
+                            print(f"🐱 DEBUG: Processed {len(data_chunks)} chunks, {chunks_with_content} had content for {model}")
                             if response_text.strip():
                                 print(f"🐱 DEBUG: Extracted response text for {model}: '{response_text[:100]}...' (length: {len(response_text)})")
                                 completion_token_result = unified_tokenizer.count_tokens(
@@ -712,7 +724,7 @@ def openai_chat_completions():
                                 completion_tokens = completion_token_result.get('completion_tokens', 0)
                                 print(f"🐱 DEBUG: Tokenizer returned {completion_tokens} completion tokens for {model}")
                             else:
-                                print(f"🚫 DEBUG: No response text extracted for streaming {model}")
+                                print(f"🚫 DEBUG: No response text extracted for streaming {model} ({chunks_with_content}/{len(data_chunks)} chunks had content)")
                             
                         except Exception as e:
                             print(f"🚫 DEBUG: Exception during streaming token extraction for {model}: {e}")
