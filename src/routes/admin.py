@@ -74,12 +74,12 @@ def create_user():
     
     user_type = UserType(data.get('type', 'normal'))
     nickname = data.get('nickname')
-    token_limits = data.get('token_limits', {})
+    prompt_limits = data.get('prompt_limits', {})
     
     try:
         token = user_store.create_user(
             user_type=user_type,
-            token_limits=token_limits,
+            prompt_limits=prompt_limits,
             nickname=nickname
         )
         
@@ -143,9 +143,9 @@ def update_user(token: str):
     if 'nickname' in data:
         user.nickname = data['nickname']
     
-    # Update token limits
-    if 'token_limits' in data:
-        user.token_limits.update(data['token_limits'])
+    # Update prompt limits
+    if 'prompt_limits' in data:
+        user.prompt_limits.update(data['prompt_limits'])
     
     # Update user type
     if 'type' in data:
@@ -725,6 +725,11 @@ def get_my_user_stats():
     # Model usage stats
     model_stats = {}
     for family, count in user.token_counts.items():
+        request_limit = user.get_request_limit(family)
+        usage_percentage = 0
+        if request_limit is not None and request_limit > 0:
+            usage_percentage = round((count.requests / request_limit) * 100, 2)
+        
         model_stats[family] = {
             'requests': count.requests,
             'input_tokens': count.input,
@@ -733,8 +738,8 @@ def get_my_user_stats():
             'cost_usd': round(count.cost_usd, 4),
             'first_request': count.first_request.isoformat() if count.first_request else None,
             'last_request': count.last_request.isoformat() if count.last_request else None,
-            'limit': user.get_token_limit(family),
-            'usage_percentage': round((count.total / user.get_token_limit(family)) * 100, 2) if user.get_token_limit(family) > 0 else 0
+            'request_limit': request_limit,
+            'usage_percentage': usage_percentage
         }
     
     # IP usage stats
@@ -774,7 +779,8 @@ def get_my_user_stats():
             'days_since_created': days_since_created,
             'days_since_last_used': days_since_last_used,
             'is_disabled': user.is_disabled(),
-            'disabled_reason': user.disabled_reason
+            'disabled_reason': user.disabled_reason,
+            'prompt_limits': {family: user.get_request_limit(family) for family in ['openai', 'anthropic', 'google', 'mistral'] if user.get_request_limit(family) is not None}
         },
         'usage_summary': {
             'total_requests': user.total_requests,
@@ -800,7 +806,6 @@ def get_my_user_stats():
             'rate_limit_violations': user.rate_limit_violations
         },
         'limits': {
-            'token_limits': user.token_limits,
             'prompt_limits': user.prompt_limits,
             'max_ips': user.max_ips,
             'remaining_prompts': user.get_remaining_prompts()

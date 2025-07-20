@@ -185,7 +185,8 @@ def check_quota(model_family: str) -> Tuple[bool, Optional[str]]:
     has_quota, used, limit = user_store.check_quota(token, model_family)
     
     if not has_quota:
-        return False, f"Quota exceeded for {model_family}: {used}/{limit} tokens used"
+        limit_text = "unlimited" if limit is None else str(limit)
+        return False, f"Request quota exceeded for {model_family}: {used}/{limit_text} requests used"
     
     return True, None
 

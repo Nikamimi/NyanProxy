@@ -95,7 +95,7 @@
                         <td>{{ count.input }}</td>
                         <td>{{ count.output }}</td>
                         <td>{{ count.total }}</td>
-                        <td>{{ user.token_limits.get(family, 'Unlimited') }}</td>
+                        <td>{{ user.prompt_limits.get(family, 'Unlimited') }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

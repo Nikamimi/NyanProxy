@@ -1110,10 +1110,18 @@
             
             // Update user info
             const userInfoContent = document.getElementById('userInfoContent');
+            const promptLimits = userStats.user_info.prompt_limits || {};
+            const limitsText = Object.keys(promptLimits).length > 0 
+                ? Object.entries(promptLimits)
+                    .map(([family, limit]) => `${family}: ${limit || 'unlimited'}`)
+                    .join(', ') 
+                : 'All unlimited';
+            
             userInfoContent.innerHTML = `
                 <p><strong>Token:</strong> ${userStats.user_info.token}</p>
                 <p><strong>Type:</strong> ${userStats.user_info.type}</p>
                 <p><strong>Nickname:</strong> ${userStats.user_info.nickname || 'Not set'}</p>
+                <p><strong>Prompt Limits:</strong> ${limitsText}</p>
                 <p><strong>Member since:</strong> ${formatDate(userStats.user_info.created_at)}</p>
                 <p><strong>Last used:</strong> ${userStats.user_info.last_used ? formatDate(userStats.user_info.last_used) : 'Never'}</p>
             `;
@@ -1147,7 +1155,25 @@
             
             let modelHTML = '';
             for (const [modelFamily, stats] of Object.entries(userStats.model_usage)) {
-                const usagePercentage = Math.min(100, stats.usage_percentage);
+                const hasLimit = stats.request_limit !== null && stats.request_limit !== undefined;
+                const usagePercentage = hasLimit ? Math.min(100, stats.usage_percentage) : 0;
+                
+                // Different display for unlimited vs limited
+                const progressBarHTML = hasLimit 
+                    ? `<div class="progress-bar">
+                         <div class="progress-fill" style="width: ${usagePercentage}%"></div>
+                       </div>`
+                    : `<div style="text-align: center; padding: 10px; background: rgba(76, 175, 80, 0.1); border-radius: 8px; color: #4caf50; font-weight: 500;">
+                         ∞ Unlimited Requests
+                       </div>`;
+                
+                const requestDisplay = hasLimit 
+                    ? `${stats.requests.toLocaleString()}/${stats.request_limit.toLocaleString()}`
+                    : `${stats.requests.toLocaleString()} (unlimited)`;
+                
+                const usageDisplay = hasLimit 
+                    ? `${usagePercentage.toFixed(1)}%`
+                    : 'Unlimited';
                 
                 modelHTML += `
                     <div class="model-card">
@@ -1155,13 +1181,11 @@
                             <span class="model-name">${modelFamily} 🤖</span>
                             <span class="model-cost">$${stats.cost_usd}</span>
                         </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${usagePercentage}%"></div>
-                        </div>
+                        ${progressBarHTML}
                         <div class="model-stats">
-                            <span>Requests: ${stats.requests.toLocaleString()}</span>
+                            <span>Requests: ${requestDisplay}</span>
                             <span>Tokens: ${stats.total_tokens.toLocaleString()}</span>
-                            <span>Usage: ${usagePercentage.toFixed(1)}%</span>
+                            <span>Usage: ${usageDisplay}</span>
                         </div>
                     </div>
                 `;

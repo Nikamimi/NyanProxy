@@ -6,6 +6,7 @@ import random
 import time
 import threading
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List
 from datetime import datetime, timedelta
 from .health_checker import health_manager, HealthResult
@@ -35,9 +36,9 @@ from ai.tokenizers.unified_tokenizer import unified_tokenizer
 
 # Import authentication system
 from src.config.auth import auth_config
-from src.middleware.auth import require_auth, check_quota, track_token_usage, get_client_ip
+from src.middleware.auth import require_auth, check_quota, track_token_usage, get_client_ip, authenticate_request
 from src.services.firebase_logger import event_logger, structured_logger
-from src.services.user_store import user_store
+from src.services.user_store import user_store, AuthResult
 from src.routes.admin import admin_bp
 from src.routes.admin_web import admin_web_bp
 from src.routes.model_families_admin import model_families_bp
@@ -234,6 +235,58 @@ class APIKeyManager:
         if anthropic_keys:
             keys['anthropic'] = list(set(anthropic_keys))
         
+        # Google keys
+        google_keys = []
+        bulk_key = os.getenv('GOOGLE_API_KEYS')
+        if bulk_key:
+            google_keys.extend(self._parse_keys(bulk_key))
+        
+        single_key = os.getenv('GOOGLE_API_KEY')
+        if single_key:
+            google_keys.extend(self._parse_keys(single_key))
+        
+        if google_keys:
+            keys['google'] = list(set(google_keys))
+        
+        # Mistral keys
+        mistral_keys = []
+        bulk_key = os.getenv('MISTRAL_API_KEYS')
+        if bulk_key:
+            mistral_keys.extend(self._parse_keys(bulk_key))
+        
+        single_key = os.getenv('MISTRAL_API_KEY')
+        if single_key:
+            mistral_keys.extend(self._parse_keys(single_key))
+        
+        if mistral_keys:
+            keys['mistral'] = list(set(mistral_keys))
+        
+        # Groq keys
+        groq_keys = []
+        bulk_key = os.getenv('GROQ_API_KEYS')
+        if bulk_key:
+            groq_keys.extend(self._parse_keys(bulk_key))
+        
+        single_key = os.getenv('GROQ_API_KEY')
+        if single_key:
+            groq_keys.extend(self._parse_keys(single_key))
+        
+        if groq_keys:
+            keys['groq'] = list(set(groq_keys))
+        
+        # Cohere keys
+        cohere_keys = []
+        bulk_key = os.getenv('COHERE_API_KEYS')
+        if bulk_key:
+            cohere_keys.extend(self._parse_keys(bulk_key))
+        
+        single_key = os.getenv('COHERE_API_KEY')
+        if single_key:
+            cohere_keys.extend(self._parse_keys(single_key))
+        
+        if cohere_keys:
+            keys['cohere'] = list(set(cohere_keys))
+        
         return keys
     
     def _initialize_key_health(self):
@@ -274,16 +327,52 @@ class APIKeyManager:
             self.update_key_health(api_key, False, None, f"Health check failed: {str(e)}")
     
     def run_initial_health_checks(self):
-        """Run initial health checks for all keys in background"""
+        """Run initial health checks for all keys concurrently in background"""
         def check_all_keys():
-            # Starting initial health checks
+            # Collect all key-service pairs for concurrent execution
+            key_service_pairs = []
             for service, keys in self.api_keys.items():
                 for key in keys:
                     if key:
-                        # Checking API key health
-                        self.perform_proactive_health_check(service, key)
-                        time.sleep(0.5)  # Small delay to avoid overwhelming APIs
-            # Health checks completed
+                        key_service_pairs.append((service, key))
+            
+            if not key_service_pairs:
+                return
+            
+            print(f"🚀 Starting concurrent health checks for {len(key_service_pairs)} API keys...")
+            start_time = time.time()
+            
+            # Use ThreadPoolExecutor for concurrent health checks
+            # Optimize concurrency based on service types and total keys
+            max_workers = min(50, len(key_service_pairs))  # Increased for better performance
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all health check tasks
+                future_to_key = {
+                    executor.submit(self.perform_proactive_health_check, service, key): (service, key)
+                    for service, key in key_service_pairs
+                }
+                
+                # Process completed tasks
+                completed = 0
+                for future in as_completed(future_to_key):
+                    service, key = future_to_key[future]
+                    try:
+                        future.result()  # Wait for completion
+                        completed += 1
+                        
+                        # Log progress every 20 completions or when significant milestones reached
+                        if completed % 20 == 0 or completed in [10, 25, 50, 100]:
+                            elapsed_partial = time.time() - start_time
+                            rate = completed / elapsed_partial if elapsed_partial > 0 else 0
+                            print(f"✅ Health checks: {completed}/{len(key_service_pairs)} ({rate:.1f}/sec)")
+                            
+                    except Exception as e:
+                        print(f"⚠️ Health check failed for {service} key {key[:8]}...: {e}")
+                        completed += 1
+            
+            elapsed = time.time() - start_time
+            print(f"🎉 All health checks completed in {elapsed:.2f}s ({len(key_service_pairs)/elapsed:.1f} keys/sec)")
         
         # Run in background thread
         thread = threading.Thread(target=check_all_keys, daemon=True)
@@ -1382,4 +1471,338 @@ def anthropic_messages():
 def anthropic_models():
     """Anthropic models endpoint (placeholder)"""
     return jsonify({"error": "Anthropic models endpoint not implemented yet"}), 501
+
+
+# ============================================================================
+# 🔮 GOOGLE GEMINI PROXY ENDPOINTS
+# ============================================================================
+
+@app.route('/google/v1/models/<path:model_path>', methods=['POST'])
+@app.route('/google/v1/<path:model_path>', methods=['POST'])
+def google_gemini_proxy(model_path):
+    """Google Gemini API proxy endpoint"""
+    try:
+        # Check authentication
+        success, error_message, user_data = authenticate_request()
+        if not success:
+            return jsonify({"error": {"message": error_message, "type": "auth_error"}}), 401
+        
+        # Store auth data in Flask g object for use in endpoint
+        g.auth_data = user_data
+        
+        # Get request data
+        request_json = request.get_json() or {}
+        
+        # Extract model name from path for validation
+        model_name = model_path.split(':')[0]  # Remove :generateContent if present
+        
+        # Handle various Google API path formats
+        if 'models/' in model_name:
+            # Extract everything after the last 'models/'
+            model_name = model_name.split('models/')[-1]
+        
+        # Remove any remaining path prefixes (like v1beta/, v1/, etc.)
+        if '/' in model_name:
+            model_name = model_name.split('/')[-1]
+        
+        
+        # Check if model is whitelisted
+        is_whitelisted = model_manager.is_model_whitelisted(AIProvider.GOOGLE, model_name)
+        
+        if not is_whitelisted:
+            return jsonify({"error": {"message": f"Model {model_name} is not whitelisted", "type": "model_not_allowed"}}), 403
+        
+        # Get Google API key
+        selected_key = key_manager.get_api_key('google')
+        if not selected_key:
+            return jsonify({"error": {"message": "No healthy Google API keys available", "type": "service_unavailable"}}), 503
+        
+        # Construct Google API URL
+        # The model_path contains the full path after /google/v1/
+        # We need to construct the correct Google API URL
+        if model_path.startswith('v1beta/'):
+            # Already has v1beta prefix, use as-is
+            google_url = f'https://generativelanguage.googleapis.com/{model_path}'
+        elif model_path.startswith('models/'):
+            # Add v1beta prefix
+            google_url = f'https://generativelanguage.googleapis.com/v1beta/{model_path}'
+        else:
+            # Assume it's a model name, add full path
+            google_url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_path}'
+        
+        
+        # Check if this is a streaming request
+        is_streaming = 'streamGenerateContent' in model_path or request.args.get('alt') == 'sse'
+        
+        # Prepare request body according to old project's approach
+        # Remove 'stream' and 'model' from request body before sending to Google
+        google_request_body = {k: v for k, v in request_json.items() if k not in ['stream', 'model']}
+        
+        
+        # Forward request to Google
+        try:
+            if is_streaming:
+                # Handle streaming response - Use API key in query string and add alt=sse
+                # Modify URL to include API key and alt=sse query parameters
+                streaming_url = google_url
+                if '?' in streaming_url:
+                    streaming_url += f'&key={selected_key}&alt=sse'
+                else:
+                    streaming_url += f'?key={selected_key}&alt=sse'
+                
+                
+                response = requests.post(
+                    streaming_url,
+                    json=google_request_body,
+                    headers={
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'NyanProxy/1.0'
+                    },
+                    timeout=120,
+                    stream=True
+                )
+            else:
+                # Handle regular response - Use API key in query string
+                regular_url = google_url
+                if '?' in regular_url:
+                    regular_url += f'&key={selected_key}'
+                else:
+                    regular_url += f'?key={selected_key}'
+                
+                
+                response = requests.post(
+                    regular_url,
+                    json=google_request_body,
+                    headers={
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'NyanProxy/1.0'
+                    },
+                    timeout=120
+                )
+            
+            
+            # Handle response
+            if response.status_code == 200:
+                if is_streaming:
+                    # Handle streaming response with background token counting
+                    all_chunks = []  # Store chunks for background token parsing
+                    
+                    def generate():
+                        try:
+                            chunk_count = 0
+                            for chunk in response.iter_content(chunk_size=8192, decode_unicode=False):
+                                if chunk:
+                                    chunk_count += 1
+                                    
+                                    # Store chunk for background token parsing (non-blocking)
+                                    all_chunks.append(chunk)
+                                    
+                                    
+                                    # Yield chunk immediately - no processing delays
+                                    yield chunk
+                            
+                                
+                        except Exception as e:
+                            print(f"❌ Streaming error: {str(e)}")
+                            import traceback
+                            traceback.print_exc()
+                            # Send error as SSE event
+                            yield f"data: {{'error': 'Stream interrupted: {str(e)}'}}\n\n"
+                    
+                    # Start background token counting after response setup
+                    import threading
+                    def background_token_counting():
+                        try:
+                            # Wait a moment for streaming to complete
+                            import time
+                            time.sleep(1)
+                            
+                            input_tokens = 0
+                            output_tokens = 0
+                            
+                            # Parse all collected chunks for usage metadata
+                            for chunk in all_chunks:
+                                try:
+                                    chunk_text = chunk.decode('utf-8')
+                                    if 'usageMetadata' in chunk_text:
+                                        # Parse JSON from SSE data
+                                        lines = chunk_text.strip().split('\n')
+                                        for line in lines:
+                                            if line.startswith('data: ') and line != 'data: [DONE]':
+                                                try:
+                                                    json_data = json.loads(line[6:])  # Remove 'data: ' prefix
+                                                    if 'usageMetadata' in json_data:
+                                                        usage = json_data['usageMetadata']
+                                                        input_tokens = usage.get('promptTokenCount', 0)
+                                                        output_tokens = usage.get('candidatesTokenCount', 0)
+                                                        break
+                                                except json.JSONDecodeError:
+                                                    continue
+                                except UnicodeDecodeError:
+                                    continue
+                            
+                            # Track usage if tokens were found
+                            if input_tokens > 0 or output_tokens > 0:
+                                # Use stored auth data (Flask context is gone in background thread)
+                                if auth_data_copy and auth_data_copy.get("type") == "user_token":
+                                    user_token = auth_data_copy['token']
+                                    
+                                    # Track model usage
+                                    model_cost = model_manager.track_model_usage(
+                                        user_token=user_token,
+                                        model_id=model_name,
+                                        input_tokens=input_tokens,
+                                        output_tokens=output_tokens
+                                    )
+                                    
+                                    # Track user usage
+                                    user = user_store.get_user(user_token)
+                                    if user:
+                                        # Get IP from stored auth data or use placeholder
+                                        client_ip = auth_data_copy.get('ip', '127.0.0.1')
+                                        user.add_request_tracking(
+                                            model_family=model_name,
+                                            input_tokens=input_tokens,
+                                            output_tokens=output_tokens,
+                                            cost=model_cost or 0.0,
+                                            ip_hash=client_ip
+                                        )
+                                
+                        except Exception as e:
+                            # Background token counting failed silently
+                            import traceback
+                            traceback.print_exc()
+                    
+                    # Store auth data for background thread (Flask context will be gone)
+                    auth_data_copy = None
+                    if hasattr(g, 'auth_data'):
+                        auth_data_copy = g.auth_data.copy()
+                        # Store client IP for background tracking
+                        auth_data_copy['ip'] = get_client_ip()
+                    
+                    # Start background thread
+                    token_thread = threading.Thread(target=background_token_counting)
+                    token_thread.daemon = True
+                    token_thread.start()
+                    
+                    # Update key health for successful streaming
+                    key_manager.update_key_health(selected_key, True)
+                    
+                    # Return streaming response with proper SSE headers
+                    from flask import Response as FlaskResponse
+                    return FlaskResponse(
+                        generate(),
+                        status=200,
+                        headers={
+                            'Content-Type': 'text/event-stream; charset=utf-8',
+                            'Cache-Control': 'no-cache',
+                            'Connection': 'keep-alive',
+                            'X-Accel-Buffering': 'no',  # nginx-specific fix
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Headers': 'Cache-Control'
+                        }
+                    )
+                else:
+                    # Handle regular JSON response
+                    response_data = response.json()
+                    
+                    # Extract usage info for tracking
+                    input_tokens = 0
+                    output_tokens = 0
+                    
+                    # Google Gemini response structure
+                    if 'usageMetadata' in response_data:
+                        usage = response_data['usageMetadata']
+                        input_tokens = usage.get('promptTokenCount', 0)
+                        output_tokens = usage.get('candidatesTokenCount', 0)
+                    
+                    # Track model usage and calculate cost
+                    model_cost = 0.0
+                    if hasattr(g, 'auth_data') and g.auth_data.get("type") == "user_token":
+                        user_token = g.auth_data['token']
+                        model_cost = model_manager.track_model_usage(
+                            user_token=user_token,
+                            model_id=model_name,  # Use extracted model name, not full path
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens
+                        )
+                        
+                        # Get user object and track usage
+                        user = user_store.get_user(user_token)
+                        if user:
+                            user.add_request_tracking(
+                                model_family=model_name,
+                                input_tokens=input_tokens,
+                                output_tokens=output_tokens,
+                                cost=model_cost or 0.0,
+                                ip_hash=get_client_ip()
+                            )
+                    
+                    # Update key health
+                    key_manager.update_key_health(selected_key, True)
+                    
+                    return jsonify(response_data), 200
+            
+            else:
+                # Handle error response
+                error_msg = response.text
+                key_manager.update_key_health(selected_key, False, response.status_code, error_msg)
+                
+                try:
+                    error_data = response.json()
+                    return jsonify(error_data), response.status_code
+                except:
+                    return jsonify({
+                        "error": {
+                            "message": f"Google API error: {error_msg}",
+                            "type": "google_api_error"
+                        }
+                    }), response.status_code
+                    
+        except requests.exceptions.Timeout:
+            key_manager.update_key_health(selected_key, False, None, "Request timeout")
+            return jsonify({"error": {"message": "Request timeout", "type": "timeout_error"}}), 504
+            
+        except requests.exceptions.RequestException as e:
+            key_manager.update_key_health(selected_key, False, None, str(e))
+            return jsonify({"error": {"message": f"Network error: {str(e)}", "type": "network_error"}}), 502
+    
+    except Exception as e:
+        print(f"❌ Google Gemini proxy error: {str(e)}")
+        return jsonify({"error": {"message": "Internal server error", "type": "internal_error"}}), 500
+
+
+@app.route('/google/v1/models', methods=['GET'])
+def google_models():
+    """Google models endpoint"""
+    try:
+        # Check authentication
+        auth_result, user = authenticate()
+        if auth_result != AuthResult.SUCCESS:
+            return jsonify({"error": {"message": "Authentication required", "type": "auth_error"}}), 401
+        
+        # Get Google API key
+        selected_key = key_manager.select_key('google')
+        if not selected_key:
+            return jsonify({"error": {"message": "No Google API keys available", "type": "service_unavailable"}}), 503
+        
+        # Get models from Google
+        try:
+            response = requests.get(
+                f'https://generativelanguage.googleapis.com/v1/models?key={selected_key}',
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return response.json(), 200
+            else:
+                return jsonify({"error": {"message": "Failed to fetch Google models", "type": "google_api_error"}}), response.status_code
+                
+        except requests.exceptions.RequestException as e:
+            return jsonify({"error": {"message": f"Network error: {str(e)}", "type": "network_error"}}), 502
+    
+    except Exception as e:
+        print(f"❌ Google models error: {str(e)}")
+        return jsonify({"error": {"message": "Internal server error", "type": "internal_error"}}), 500
 

@@ -253,6 +253,67 @@ class ModelFamilyManager:
                 is_premium=True,
                 cat_personality="smart"
             ),
+            
+            # Google Gemini Models (prices per 1M tokens)
+            ModelInfo(
+                model_id="gemini-1.5-pro-latest",
+                provider=AIProvider.GOOGLE,
+                display_name="Gemini 1.5 Pro",
+                description="Google's most capable model with 1M token context",
+                input_cost_per_1m=1.25,
+                output_cost_per_1m=5.0,
+                context_length=1000000,
+                supports_function_calling=True,
+                is_premium=True,
+                cat_personality="smart"
+            ),
+            ModelInfo(
+                model_id="gemini-1.5-flash",
+                provider=AIProvider.GOOGLE,
+                display_name="Gemini 1.5 Flash",
+                description="Fast and efficient model for high-volume tasks",
+                input_cost_per_1m=0.075,
+                output_cost_per_1m=0.30,
+                context_length=1000000,
+                supports_function_calling=True,
+                cat_personality="fast"
+            ),
+            ModelInfo(
+                model_id="gemini-2.0-flash-exp",
+                provider=AIProvider.GOOGLE,
+                display_name="Gemini 2.0 Flash (Experimental)",
+                description="Latest experimental Gemini model with enhanced capabilities",
+                input_cost_per_1m=0.075,
+                output_cost_per_1m=0.30,
+                context_length=1000000,
+                supports_function_calling=True,
+                is_premium=True,
+                cat_personality="playful"
+            ),
+            ModelInfo(
+                model_id="gemini-2.5-flash",
+                provider=AIProvider.GOOGLE,
+                display_name="Gemini 2.5 Flash",
+                description="Latest Gemini 2.5 Flash model with improved performance",
+                input_cost_per_1m=0.075,
+                output_cost_per_1m=0.30,
+                context_length=1000000,
+                supports_function_calling=True,
+                is_premium=True,
+                cat_personality="fast"
+            ),
+            ModelInfo(
+                model_id="gemini-2.5-pro",
+                provider=AIProvider.GOOGLE,
+                display_name="Gemini 2.5 Pro",
+                description="Advanced Gemini 2.5 Pro model with enhanced capabilities",
+                input_cost_per_1m=1.25,
+                output_cost_per_1m=5.0,
+                context_length=2000000,
+                supports_function_calling=True,
+                is_premium=True,
+                cat_personality="smart"
+            ),
         ]
         
         for model in default_models:
@@ -957,7 +1018,8 @@ class ModelFamilyManager:
         with self.lock:
             # Default models are those defined in _initialize_default_models
             default_model_ids = {
-                "gpt-4o", "claude-3-5-sonnet-20241022"
+                "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-pro-latest", 
+                "gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-2.5-flash", "gemini-2.5-pro"
             }
             
             return [
@@ -1002,7 +1064,8 @@ class ModelFamilyManager:
         """Save custom models to persistent storage using model_config structure"""
         # Get custom models without acquiring lock (since we're already in a locked context)
         default_model_ids = {
-            "gpt-4o", "claude-3-5-sonnet-20241022"
+            "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-pro-latest", 
+            "gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-2.5-flash"
         }
         custom_models = [
             model for model_id, model in self.models.items()
@@ -1096,7 +1159,8 @@ class ModelFamilyManager:
         try:
             # Get custom models without acquiring lock (since we're already in a locked context)
             default_model_ids = {
-                "gpt-4o", "claude-3-5-sonnet-20241022"
+                "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-pro-latest", 
+                "gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-2.5-flash", "gemini-2.5-pro"
             }
             custom_models = [
                 model for model_id, model in self.models.items()
@@ -1237,7 +1301,8 @@ class ModelFamilyManager:
         try:
             # Get default model IDs
             default_model_ids = {
-                "gpt-4o", "claude-3-5-sonnet-20241022"
+                "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-pro-latest", 
+                "gemini-1.5-flash", "gemini-2.0-flash-exp", "gemini-2.5-flash", "gemini-2.5-pro"
             }
             
             # Collect overrides for default models and organize by provider

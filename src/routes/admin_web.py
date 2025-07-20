@@ -349,28 +349,28 @@ def create_user():
         user_type = UserType(request.form.get('type', 'normal'))
         nickname = request.form.get('nickname') or None
         
-        # Parse token limits
-        token_limits = {}
+        # Parse request limits
+        request_limits = {}
         if request.form.get('openai_limit'):
-            token_limits['openai'] = int(request.form.get('openai_limit'))
+            request_limits['openai'] = int(request.form.get('openai_limit'))
         if request.form.get('anthropic_limit'):
-            token_limits['anthropic'] = int(request.form.get('anthropic_limit'))
+            request_limits['anthropic'] = int(request.form.get('anthropic_limit'))
         
         # Parse temporary user options
-        prompt_limits = None
+        temp_prompt_limits = None
         max_ips = None
         if user_type == UserType.TEMPORARY:
             if request.form.get('prompt_limits'):
-                prompt_limits = int(request.form.get('prompt_limits'))
+                temp_prompt_limits = int(request.form.get('prompt_limits'))
             if request.form.get('max_ips'):
                 max_ips = int(request.form.get('max_ips'))
         
         try:
             token = user_store.create_user(
                 user_type=user_type,
-                token_limits=token_limits,
+                prompt_limits=request_limits,
                 nickname=nickname,
-                prompt_limits=prompt_limits,
+                temp_prompt_limits=temp_prompt_limits,
                 max_ips=max_ips
             )
             
@@ -395,7 +395,6 @@ def create_user():
                     'created_by': 'admin',
                     'type': user_type.value,
                     'nickname': nickname,
-                    'token_limits': token_limits,
                     'prompt_limits': prompt_limits,
                     'max_ips': max_ips
                 },
@@ -567,15 +566,15 @@ def edit_user(token: str):
         if 'nickname' in request.form:
             user.nickname = request.form['nickname']
         
-        # Update token limits
-        token_limits = {}
+        # Update prompt limits
+        prompt_limits = {}
         if request.form.get('openai_limit'):
-            token_limits['openai'] = int(request.form.get('openai_limit'))
+            prompt_limits['openai'] = int(request.form.get('openai_limit'))
         if request.form.get('anthropic_limit'):
-            token_limits['anthropic'] = int(request.form.get('anthropic_limit'))
+            prompt_limits['anthropic'] = int(request.form.get('anthropic_limit'))
         
-        if token_limits:
-            user.token_limits.update(token_limits)
+        if prompt_limits:
+            user.prompt_limits.update(prompt_limits)
         
         # Update user type
         if 'type' in request.form:

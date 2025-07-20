@@ -200,7 +200,7 @@ class User:
     ip: List[str] = None
     ip_usage: List[IPUsage] = None
     token_counts: Dict[str, TokenCount] = None
-    token_limits: Dict[str, int] = None
+    prompt_limits: Dict[str, Optional[int]] = None
     token_refresh: Dict[str, int] = None  # Token refresh timestamps per model family
     nickname: Optional[str] = None
     
@@ -239,13 +239,13 @@ class User:
             self.ip_usage = []
         if self.token_counts is None:
             self.token_counts = {}
-        if self.token_limits is None:
-            # Default limits per model family
-            self.token_limits = {
-                'openai': 100000,
-                'anthropic': 100000,
-                'google': 100000,
-                'mistral': 100000
+        if self.prompt_limits is None:
+            # Default request limits per model family (None = unlimited)
+            self.prompt_limits = {
+                'openai': None,
+                'anthropic': None,
+                'google': None,
+                'mistral': None
             }
         if self.token_refresh is None:
             # Initialize token refresh timestamps (0 = never refreshed)
@@ -308,12 +308,18 @@ class User:
         return total_prompts >= self.prompt_limits
     
     def get_remaining_prompts(self) -> Optional[int]:
-        """Get remaining prompts for temporary users"""
-        if self.prompt_limits is None:
+        """Get remaining prompts across all model families (for backward compatibility)"""
+        if not self.prompt_limits:
             return None
         
-        total_prompts = sum(ip_usage.prompt_count for ip_usage in self.ip_usage)
-        return max(0, self.prompt_limits - total_prompts)
+        # Find the most restrictive limit (minimum non-null value)
+        limits = [limit for limit in self.prompt_limits.values() if limit is not None]
+        if not limits:
+            return None  # All unlimited
+        
+        min_limit = min(limits)
+        total_requests = sum(count.requests for count in self.token_counts.values())
+        return max(0, min_limit - total_requests)
     
     def get_token_usage(self, model_family: str) -> TokenCount:
         """Get aggregated token usage for a model family"""
@@ -356,8 +362,13 @@ class User:
         
         return aggregated
     
-    def get_token_limit(self, model_family: str) -> int:
-        return self.token_limits.get(model_family, 100000)
+    def get_request_limit(self, model_family: str) -> Optional[int]:
+        """Get request limit for model family. Returns None for unlimited."""
+        return self.prompt_limits.get(model_family, None)
+    
+    def get_token_limit(self, model_family: str) -> Optional[int]:
+        """Legacy method for backward compatibility"""
+        return self.get_request_limit(model_family)
     
     def get_token_refresh(self, model_family: str) -> int:
         """Get token refresh timestamp for model family"""
@@ -376,7 +387,7 @@ class User:
             return True
         else:
             # Refresh all model families
-            for family in self.token_limits.keys():
+            for family in self.prompt_limits.keys():
                 if family in self.token_counts:
                     self.token_counts[family] = TokenCount()
                 self.token_refresh[family] = current_timestamp
@@ -496,13 +507,13 @@ class User:
                 self.token_counts = {}
                 fixed_issues = True
             
-            if not hasattr(self, 'token_limits') or self.token_limits is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing token_limits, initializing")
-                self.token_limits = {
-                    'openai': 100000,
-                    'anthropic': 100000,
-                    'google': 100000,
-                    'mistral': 100000
+            if not hasattr(self, 'prompt_limits') or self.prompt_limits is None:
+                print(f"🔧 INTEGRITY: User {self.token[:8]} missing prompt_limits, initializing")
+                self.prompt_limits = {
+                    'openai': None,
+                    'anthropic': None,
+                    'google': None,
+                    'mistral': None
                 }
                 fixed_issues = True
             
@@ -644,7 +655,6 @@ class User:
             'ip': self.ip,
             'ip_usage': [usage.to_dict() for usage in self.ip_usage],
             'token_counts': {self._sanitize_model_key(k): v.to_dict() for k, v in self.token_counts.items()},
-            'token_limits': self.token_limits,
             'token_refresh': self.token_refresh,
             'nickname': self.nickname,
             'prompt_limits': self.prompt_limits,
@@ -754,10 +764,9 @@ class User:
             ip=data.get('ip', []),
             ip_usage=ip_usage,
             token_counts=token_counts,
-            token_limits=data.get('token_limits', data.get('tokenLimits', {})),
+            prompt_limits=data.get('prompt_limits', data.get('token_limits', data.get('tokenLimits', {}))),
             token_refresh=data.get('token_refresh', data.get('tokenRefresh', {})),
             nickname=data.get('nickname'),
-            prompt_limits=data.get('prompt_limits'),
             max_ips=data.get('max_ips'),
             
             # Enhanced tracking fields with backward compatibility
@@ -1075,9 +1084,9 @@ class UserStore:
                 self.flush_queue.add(token)
     
     def create_user(self, user_type: UserType = UserType.NORMAL, 
-                   token_limits: Optional[Dict[str, int]] = None,
+                   prompt_limits: Optional[Dict[str, int]] = None,
                    nickname: Optional[str] = None,
-                   prompt_limits: Optional[int] = None,
+                   temp_prompt_limits: Optional[int] = None,
                    max_ips: Optional[int] = None) -> str:
         """Create a new user and return their token"""
         with self.lock.write_lock():
@@ -1087,16 +1096,32 @@ class UserStore:
                 token=token,
                 type=user_type,
                 nickname=nickname,
-                prompt_limits=prompt_limits,
+                prompt_limits=temp_prompt_limits,
                 max_ips=max_ips
             )
             
-            if token_limits:
-                user.token_limits.update(token_limits)
+            if prompt_limits:
+                user.prompt_limits.update(prompt_limits)
             
             self.users[token] = user
-            with self.flush_queue_lock:
-                self.flush_queue.add(token)
+            
+            # Immediately save new user to Firebase to ensure instant availability
+            if self.firebase_db:
+                try:
+                    sanitized_token = self._sanitize_firebase_key(token)
+                    user_data = user.to_dict()
+                    user_ref = self.firebase_db.child('users').child(sanitized_token)
+                    user_ref.set(user_data)
+                    print(f"💾 IMMEDIATE SAVE: Successfully saved new user {token[:8]} to Firebase")
+                except Exception as e:
+                    print(f"🚫 IMMEDIATE SAVE: Failed to save new user {token[:8]} to Firebase: {e}")
+                    # Add to flush queue as fallback
+                    with self.flush_queue_lock:
+                        self.flush_queue.add(token)
+            else:
+                # No Firebase connection, add to flush queue for later
+                with self.flush_queue_lock:
+                    self.flush_queue.add(token)
             
             return token
     
@@ -1187,11 +1212,9 @@ class UserStore:
             # Use the new add_usage method
             user.token_counts[model_family].add_usage(input_tokens, output_tokens, cost)
             
-            # Update general user stats
-            user.total_requests += 1
+            # Update general user stats (legacy method - main tracking done in add_request_tracking)
             user.total_cost += cost
             user.last_used = datetime.now()
-            user.paw_prints += 1
             
             # Update IP usage if we can determine current IP
             # Note: This is a fallback method, prefer using add_request_tracking
@@ -1264,8 +1287,24 @@ class UserStore:
                 raise ValueError("User must be disabled before deletion")
             
             del self.users[token]
-            with self.flush_queue_lock:
-                self.flush_queue.add(token)  # This will trigger Firebase deletion
+            
+            # Immediately delete from Firebase to prevent resurrection on server restart
+            if self.firebase_db:
+                try:
+                    sanitized_token = self._sanitize_firebase_key(token)
+                    user_ref = self.firebase_db.child('users').child(sanitized_token)
+                    user_ref.delete()
+                    print(f"🗑️ IMMEDIATE DELETE: Successfully deleted user {token[:8]} from Firebase")
+                except Exception as e:
+                    print(f"🚫 IMMEDIATE DELETE: Failed to delete user {token[:8]} from Firebase: {e}")
+                    # Add to flush queue as fallback
+                    with self.flush_queue_lock:
+                        self.flush_queue.add(token)
+            else:
+                # No Firebase connection, add to flush queue for later
+                with self.flush_queue_lock:
+                    self.flush_queue.add(token)
+            
             return True
     
     def rotate_user_token(self, old_token: str) -> Optional[str]:
@@ -1305,8 +1344,8 @@ class UserStore:
         with self.lock.read_lock():
             return len(self.users)
     
-    def check_quota(self, token: str, model_family: str) -> Tuple[bool, int, int]:
-        """Check if user has quota remaining. Returns (has_quota, used, limit)"""
+    def check_quota(self, token: str, model_family: str) -> Tuple[bool, int, Optional[int]]:
+        """Check if user has quota remaining. Returns (has_quota, used_requests, request_limit)"""
         with self.lock.read_lock():
             if token not in self.users:
                 return False, 0, 0
@@ -1315,10 +1354,14 @@ class UserStore:
             if user.is_disabled():
                 return False, 0, 0
             
-            used = user.get_token_usage(model_family).total
-            limit = user.get_token_limit(model_family)
+            used_requests = user.get_token_usage(model_family).requests
+            request_limit = user.get_request_limit(model_family)
             
-            return used < limit, used, limit
+            # None means unlimited
+            if request_limit is None:
+                return True, used_requests, None
+            
+            return used_requests < request_limit, used_requests, request_limit
 
 # Global user store instance
 user_store = UserStore()
