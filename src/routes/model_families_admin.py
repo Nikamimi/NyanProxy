@@ -630,10 +630,13 @@ def create_model_config():
         
         from ..services.model_families import AIProvider, ModelConfig
         
+        print(f"🔍 Creating model config with data: {data}")
         provider = AIProvider(data['provider'].lower())
+        print(f"🔍 Provider enum: {provider}")
         
         # Use display_name as the model_name (config identifier)
         model_name = data.get('model_name', data['display_name'])
+        print(f"🔍 Model name: {model_name}")
         
         model_config = ModelConfig(
             model_name=model_name,
@@ -653,7 +656,9 @@ def create_model_config():
             cat_personality=data.get('cat_personality', 'curious')
         )
         
+        print(f"🔍 Calling add_model_config with provider={provider}, model_name={model_name}")
         success = model_manager.add_model_config(provider, model_name, model_config)
+        print(f"🔍 add_model_config returned: {success}")
         
         if success:
             structured_logger.log_user_action(

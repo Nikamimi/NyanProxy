@@ -676,35 +676,47 @@ class ModelFamilyManager:
     def _save_model_configs(self):
         """Save model configurations to Firebase model_config structure"""
         if not self.firebase_db:
+            print("❌ No Firebase database connection")
             return
         
         try:
+            print(f"🔍 Starting Firebase save with {len(self.model_configs)} providers")
             config_ref = self.firebase_db.child('model_config')
             config_data = {}
             
             for provider_key, provider_models in self.model_configs.items():
+                print(f"🔍 Processing provider {provider_key} with {len(provider_models)} models")
                 config_data[provider_key] = {}
                 for model_name, model_config in provider_models.items():
                     # Sanitize model name for Firebase key
                     sanitized_model_name = self.sanitize_key(model_name)
-                    config_data[provider_key][sanitized_model_name] = model_config.to_dict()
+                    config_dict = model_config.to_dict()
+                    config_data[provider_key][sanitized_model_name] = config_dict
+                    print(f"🔍 Added {provider_key}[{sanitized_model_name}] to save data")
             
+            print(f"🔍 About to save config_data: {config_data}")
             config_ref.set(config_data)
             print(f"✅ Saved {len(config_data)} provider model configs to Firebase")
             
         except Exception as e:
             print(f"Failed to save model configs to Firebase: {e}")
+            import traceback
+            traceback.print_exc()
     
     def add_model_config(self, provider: AIProvider, model_name: str, model_config: ModelConfig) -> bool:
         """Add a new model configuration"""
         try:
+            print(f"🔍 add_model_config called: provider={provider.value}, model_name={model_name}")
             with self.lock:
                 provider_key = provider.value
+                print(f"🔍 Provider key: {provider_key}")
                 if provider_key not in self.model_configs:
                     self.model_configs[provider_key] = {}
+                    print(f"🔍 Created new provider entry for {provider_key}")
                 
                 model_config.updated_at = datetime.now()
                 self.model_configs[provider_key][model_name] = model_config
+                print(f"🔍 Added model config to memory: {provider_key}[{model_name}]")
                 
                 # Update legacy system for backward compatibility
                 if model_config.status == "enabled":
@@ -726,7 +738,9 @@ class ModelFamilyManager:
                             cat_personality=model_config.cat_personality
                         )
                 
+                print(f"🔍 About to save model configs to Firebase")
                 self._save_model_configs()
+                print(f"🔍 Firebase save completed, returning True")
                 return True
                 
         except Exception as e:
