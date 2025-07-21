@@ -1280,6 +1280,8 @@
                     const fromNewSystem = modelData.from_new_system || false;
                     const modelIdsCount = modelData.model_ids_count || 1;
                     const activeModelIds = modelData.active_model_ids || [];
+                    const maxInputTokens = modelData.max_input_tokens;
+                    const maxOutputTokens = modelData.max_output_tokens;
                     
                     // Get cat emoji based on personality
                     const catEmojis = {
@@ -1306,6 +1308,14 @@
                     const tooltip = fromNewSystem && activeModelIds.length > 0 ? 
                         `title="Active model IDs: ${activeModelIds.join(', ')}"` : '';
                     
+                    // Create token limits display if custom limits are set
+                    const tokenLimitsHTML = (maxInputTokens || maxOutputTokens) ? 
+                        `<div style="font-size: 0.7em; color: #666; margin-top: 5px; padding: 3px 6px; background: rgba(255,255,255,0.6); border-radius: 6px;">
+                            <strong>Token Limits:</strong> 
+                            ${maxInputTokens ? maxInputTokens.toLocaleString() + ' in' : 'No limit'} | 
+                            ${maxOutputTokens ? maxOutputTokens.toLocaleString() + ' out' : 'No limit'}
+                        </div>` : '';
+                    
                     modelsHTML += `
                         <div class="${cardClass}" style="${cardStyle}" ${tooltip}>
                             <div class="model-header">
@@ -1326,6 +1336,7 @@
                                     <div class="model-metric-label">Cost</div>
                                 </div>
                             </div>
+                            ${tokenLimitsHTML}
                         </div>
                     `;
                 });

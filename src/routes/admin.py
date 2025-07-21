@@ -921,7 +921,9 @@ def get_model_usage_stats():
                     'first_used': aggregated_stats['first_used'],
                     'has_usage': aggregated_stats['has_usage'],
                     'from_new_system': True,
-                    'model_ids_count': len(model_config.model_ids)
+                    'model_ids_count': len(model_config.model_ids),
+                    'max_input_tokens': model_config.max_input_tokens,
+                    'max_output_tokens': model_config.max_output_tokens
                 }
         
         # Fall back to legacy whitelisted models if no new configs exist
@@ -961,7 +963,9 @@ def get_model_usage_stats():
                         'last_used': model_stats.get('last_used'),
                         'first_used': model_stats.get('first_used'),
                         'has_usage': model_id in global_stats,
-                        'from_new_system': False
+                        'from_new_system': False,
+                        'max_input_tokens': getattr(model_info, 'max_input_tokens', None),
+                        'max_output_tokens': getattr(model_info, 'max_output_tokens', None)
                     }
         
         return jsonify(provider_stats)
