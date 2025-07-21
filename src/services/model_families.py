@@ -139,6 +139,79 @@ class ModelUsageStats:
             success_rate=data.get('success_rate', 100.0)
         )
 
+@dataclass
+class ModelConfig:
+    """New model configuration structure for Firebase storage"""
+    model_name: str  # Logical name (e.g., "gpt-4o", "claude-sonnet")
+    provider: AIProvider
+    status: str = "disabled"  # "enabled" or "disabled"
+    model_ids: List[str] = None  # Multiple model IDs (e.g., ["gpt-4o", "gpt-4o-2024-11-20"])
+    display_name: str = ""
+    description: str = ""
+    input_cost_per_1m: float = 0.0
+    output_cost_per_1m: float = 0.0
+    context_length: int = 4096
+    max_input_tokens: Optional[int] = None
+    max_output_tokens: Optional[int] = None
+    supports_streaming: bool = True
+    supports_function_calling: bool = False
+    is_premium: bool = False
+    cat_personality: str = "curious"
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    def __post_init__(self):
+        if self.model_ids is None:
+            self.model_ids = []
+        if self.created_at is None:
+            self.created_at = datetime.now()
+        self.updated_at = datetime.now()
+    
+    def get_cat_emoji(self) -> str:
+        """Get cat emoji based on personality"""
+        emojis = {
+            'curious': '🙀',
+            'playful': '😸',
+            'sleepy': '😴',
+            'grumpy': '😾',
+            'smart': '🤓',
+            'fast': '💨'
+        }
+        return emojis.get(self.cat_personality, '😺')
+    
+    def to_dict(self) -> Dict:
+        """Convert to dictionary for Firebase storage"""
+        data = asdict(self)
+        data['provider'] = self.provider.value
+        if self.created_at:
+            data['created_at'] = self.created_at.isoformat()
+        if self.updated_at:
+            data['updated_at'] = self.updated_at.isoformat()
+        return data
+    
+    @classmethod
+    def from_dict(cls, model_name: str, data: Dict):
+        """Create from Firebase dictionary"""
+        return cls(
+            model_name=model_name,
+            provider=AIProvider(data['provider']),
+            status=data.get('status', 'disabled'),
+            model_ids=data.get('model_ids', []),
+            display_name=data.get('display_name', ''),
+            description=data.get('description', ''),
+            input_cost_per_1m=data.get('input_cost_per_1m', 0.0),
+            output_cost_per_1m=data.get('output_cost_per_1m', 0.0),
+            context_length=data.get('context_length', 4096),
+            max_input_tokens=data.get('max_input_tokens'),
+            max_output_tokens=data.get('max_output_tokens'),
+            supports_streaming=data.get('supports_streaming', True),
+            supports_function_calling=data.get('supports_function_calling', False),
+            is_premium=data.get('is_premium', False),
+            cat_personality=data.get('cat_personality', 'curious'),
+            created_at=datetime.fromisoformat(data['created_at']) if data.get('created_at') else None,
+            updated_at=datetime.fromisoformat(data['updated_at']) if data.get('updated_at') else None
+        )
+
 class ModelFamilyManager:
     """
     🐾 Model Family Management System
@@ -174,17 +247,21 @@ class ModelFamilyManager:
                 .replace('__RBRACKET__', ']'))
         
         # For periods, we need to be careful - only replace single underscores that represent periods
-        # This is a simple heuristic: replace underscores with periods only in version-like patterns
+        # This handles version patterns like: gpt-4_1 -> gpt-4.1, claude-3_5-sonnet -> claude-3.5-sonnet
         import re
-        # Replace patterns like gpt-4_1 back to gpt-4.1
+        # Replace patterns like gpt-4_1, claude-3_5, gemini-1_5 back to gpt-4.1, claude-3.5, gemini-1.5
         result = re.sub(r'(\d)_(\d)', r'\1.\2', result)
         
         return result
     
     def __init__(self):
         self.lock = threading.Lock()
+        # New model configuration system
+        self.model_configs: Dict[str, Dict[str, ModelConfig]] = {}  # provider -> model_name -> ModelConfig
+        # Legacy compatibility (will be phased out)
         self.models: Dict[str, ModelInfo] = {}
         self.whitelisted_models: Dict[AIProvider, Set[str]] = {}
+        # Usage tracking
         self.global_usage_stats: Dict[str, ModelUsageStats] = {}
         self.user_usage_stats: Dict[str, Dict[str, ModelUsageStats]] = {}  # user_token -> model_id -> stats
         self.global_totals = {
@@ -209,7 +286,10 @@ class ModelFamilyManager:
         if FIREBASE_AVAILABLE and auth_config.firebase_url:
             self._initialize_firebase()
         
-        # Load configuration
+        # Load new model configuration system
+        self._load_model_configs()
+        
+        # Legacy: Load configuration (for backward compatibility)
         self._load_configuration()
         
         # Load custom models
@@ -231,103 +311,12 @@ class ModelFamilyManager:
         self._apply_default_whitelists_if_needed()
     
     def _initialize_default_models(self):
-        """Initialize with default model configurations"""
-        default_models = [
-            # OpenAI Models (prices per 1M tokens)
-            ModelInfo(
-                model_id="gpt-4o",
-                provider=AIProvider.OPENAI,
-                display_name="GPT-4o",
-                description="Most advanced GPT-4 model with vision capabilities",
-                input_cost_per_1m=5.0,
-                output_cost_per_1m=15.0,
-                context_length=128000,
-                supports_function_calling=True,
-                is_premium=True,
-                cat_personality="smart"
-            ),
-            
-            # Anthropic Models (prices per 1M tokens)
-            ModelInfo(
-                model_id="claude-3-5-sonnet-20241022",
-                provider=AIProvider.ANTHROPIC,
-                display_name="Claude 3.5 Sonnet",
-                description="Most intelligent Claude model",
-                input_cost_per_1m=3.0,
-                output_cost_per_1m=15.0,
-                context_length=200000,
-                is_premium=True,
-                cat_personality="smart"
-            ),
-            
-            # Google Gemini Models (prices per 1M tokens)
-            ModelInfo(
-                model_id="gemini-1.5-pro-latest",
-                provider=AIProvider.GOOGLE,
-                display_name="Gemini 1.5 Pro",
-                description="Google's most capable model with 1M token context",
-                input_cost_per_1m=1.25,
-                output_cost_per_1m=5.0,
-                context_length=1000000,
-                supports_function_calling=True,
-                is_premium=True,
-                cat_personality="smart"
-            ),
-            ModelInfo(
-                model_id="gemini-1.5-flash",
-                provider=AIProvider.GOOGLE,
-                display_name="Gemini 1.5 Flash",
-                description="Fast and efficient model for high-volume tasks",
-                input_cost_per_1m=0.075,
-                output_cost_per_1m=0.30,
-                context_length=1000000,
-                supports_function_calling=True,
-                cat_personality="fast"
-            ),
-            ModelInfo(
-                model_id="gemini-2.0-flash-exp",
-                provider=AIProvider.GOOGLE,
-                display_name="Gemini 2.0 Flash (Experimental)",
-                description="Latest experimental Gemini model with enhanced capabilities",
-                input_cost_per_1m=0.075,
-                output_cost_per_1m=0.30,
-                context_length=1000000,
-                supports_function_calling=True,
-                is_premium=True,
-                cat_personality="playful"
-            ),
-            ModelInfo(
-                model_id="gemini-2.5-flash",
-                provider=AIProvider.GOOGLE,
-                display_name="Gemini 2.5 Flash",
-                description="Latest Gemini 2.5 Flash model with improved performance",
-                input_cost_per_1m=0.075,
-                output_cost_per_1m=0.30,
-                context_length=1000000,
-                supports_function_calling=True,
-                is_premium=True,
-                cat_personality="fast"
-            ),
-            ModelInfo(
-                model_id="gemini-2.5-pro",
-                provider=AIProvider.GOOGLE,
-                display_name="Gemini 2.5 Pro",
-                description="Advanced Gemini 2.5 Pro model with enhanced capabilities",
-                input_cost_per_1m=1.25,
-                output_cost_per_1m=5.0,
-                context_length=2000000,
-                supports_function_calling=True,
-                is_premium=True,
-                cat_personality="smart"
-            ),
-        ]
-        
-        for model in default_models:
-            self.models[model.model_id] = model
-        
-        # Initialize empty whitelists (will be populated from saved config or defaults if none exist)
+        """Initialize empty model system - all models will be loaded from Firebase"""
+        # Initialize empty whitelists - will be populated from Firebase model_config
         for provider in AIProvider:
             self.whitelisted_models[provider] = set()
+        
+        print("🗑️ Initialized clean model system - no hardcoded defaults")
     
     def _initialize_firebase(self):
         """Initialize Firebase connection for persistent storage"""
@@ -610,40 +599,204 @@ class ModelFamilyManager:
             return cleaned
     
     def _apply_default_whitelists_if_needed(self):
-        """Apply default model whitelists only if no saved configuration exists"""
-        with self.lock:
-            # Check if any provider has any models whitelisted
-            has_any_config = any(
-                len(models) > 0 for models in self.whitelisted_models.values()
-            )
+        """No-op - system starts completely empty, models added via admin interface only"""
+        print("✅ Clean start - no default models. Use admin interface to add models.")
+    
+    def _load_model_configs(self):
+        """Load model configurations from Firebase model_config structure"""
+        if not self.firebase_db:
+            print("🔥 No Firebase connection - model configs will be empty")
+            return
+        
+        try:
+            import threading
             
-            if not has_any_config:
-                print("🔧 No existing whitelist configuration found, applying defaults...")
-                # Get default models by provider
-                default_models_by_provider = {}
-                for model_id, model in self.models.items():
-                    # Only include truly essential default models, not all of them
-                    essential_defaults = {
-                        "gpt-4o-mini",  # Cheap OpenAI model
-                        "gemini-1.5-flash",  # Cheap Google model
-                        # Don't auto-whitelist expensive Anthropic models
-                    }
-                    if model_id in essential_defaults:
-                        provider = model.provider
-                        if provider not in default_models_by_provider:
-                            default_models_by_provider[provider] = set()
-                        default_models_by_provider[provider].add(model_id)
+            def load_configs():
+                try:
+                    config_ref = self.firebase_db.child('model_config')
+                    config_data = config_ref.get()
+                    
+                    if config_data:
+                        self.model_configs = {}
+                        for provider_key, provider_models in config_data.items():
+                            if provider_key not in self.model_configs:
+                                self.model_configs[provider_key] = {}
+                            
+                            for sanitized_model_name, model_data in provider_models.items():
+                                try:
+                                    # Unsanitize the model name for internal storage
+                                    model_name = self.unsanitize_key(sanitized_model_name)
+                                    model_config = ModelConfig.from_dict(model_name, model_data)
+                                    self.model_configs[provider_key][model_name] = model_config
+                                    
+                                    # Update legacy whitelisted_models for backward compatibility
+                                    provider = AIProvider(provider_key)
+                                    if model_config.status == "enabled":
+                                        for model_id in model_config.model_ids:
+                                            self.whitelisted_models[provider].add(model_id)
+                                            # Create legacy ModelInfo for compatibility
+                                            self.models[model_id] = ModelInfo(
+                                                model_id=model_id,
+                                                provider=provider,
+                                                display_name=model_config.display_name,
+                                                description=model_config.description,
+                                                input_cost_per_1m=model_config.input_cost_per_1m,
+                                                output_cost_per_1m=model_config.output_cost_per_1m,
+                                                context_length=model_config.context_length,
+                                                max_input_tokens=model_config.max_input_tokens,
+                                                max_output_tokens=model_config.max_output_tokens,
+                                                supports_streaming=model_config.supports_streaming,
+                                                supports_function_calling=model_config.supports_function_calling,
+                                                is_premium=model_config.is_premium,
+                                                cat_personality=model_config.cat_personality
+                                            )
+                                    
+                                    print(f"🔥 Loaded {model_name} ({provider_key}): {model_config.status}, {len(model_config.model_ids)} model_ids")
+                                except Exception as e:
+                                    print(f"❌ Error loading model {model_name}: {e}")
+                        
+                        print(f"✅ Loaded {len(config_data)} provider model configs from Firebase")
+                    else:
+                        print("🔥 No model_config found in Firebase - starting with empty configuration")
+                except Exception as e:
+                    print(f"Failed to load model configs in thread: {e}")
+            
+            # Try to load with a timeout
+            config_thread = threading.Thread(target=load_configs)
+            config_thread.daemon = True
+            config_thread.start()
+            config_thread.join(timeout=5.0)  # 5 second timeout
+            
+            if config_thread.is_alive():
+                print("Firebase model config load timed out, using empty configs")
                 
-                # Apply minimal defaults
-                for provider, model_ids in default_models_by_provider.items():
-                    self.whitelisted_models[provider] = model_ids
-                    print(f"🔧 Applied default whitelist for {provider.value}: {sorted(model_ids)}")
+        except Exception as e:
+            print(f"Failed to load model configs from Firebase: {e}")
+    
+    def _save_model_configs(self):
+        """Save model configurations to Firebase model_config structure"""
+        if not self.firebase_db:
+            return
+        
+        try:
+            config_ref = self.firebase_db.child('model_config')
+            config_data = {}
+            
+            for provider_key, provider_models in self.model_configs.items():
+                config_data[provider_key] = {}
+                for model_name, model_config in provider_models.items():
+                    # Sanitize model name for Firebase key
+                    sanitized_model_name = self.sanitize_key(model_name)
+                    config_data[provider_key][sanitized_model_name] = model_config.to_dict()
+            
+            config_ref.set(config_data)
+            print(f"✅ Saved {len(config_data)} provider model configs to Firebase")
+            
+        except Exception as e:
+            print(f"Failed to save model configs to Firebase: {e}")
+    
+    def add_model_config(self, provider: AIProvider, model_name: str, model_config: ModelConfig) -> bool:
+        """Add a new model configuration"""
+        try:
+            with self.lock:
+                provider_key = provider.value
+                if provider_key not in self.model_configs:
+                    self.model_configs[provider_key] = {}
                 
-                # Save the minimal defaults
-                if default_models_by_provider:
-                    self._save_configuration()
-            else:
-                print("✅ Existing whitelist configuration found, using saved preferences")
+                model_config.updated_at = datetime.now()
+                self.model_configs[provider_key][model_name] = model_config
+                
+                # Update legacy system for backward compatibility
+                if model_config.status == "enabled":
+                    for model_id in model_config.model_ids:
+                        self.whitelisted_models[provider].add(model_id)
+                        self.models[model_id] = ModelInfo(
+                            model_id=model_id,
+                            provider=provider,
+                            display_name=model_config.display_name,
+                            description=model_config.description,
+                            input_cost_per_1m=model_config.input_cost_per_1m,
+                            output_cost_per_1m=model_config.output_cost_per_1m,
+                            context_length=model_config.context_length,
+                            max_input_tokens=model_config.max_input_tokens,
+                            max_output_tokens=model_config.max_output_tokens,
+                            supports_streaming=model_config.supports_streaming,
+                            supports_function_calling=model_config.supports_function_calling,
+                            is_premium=model_config.is_premium,
+                            cat_personality=model_config.cat_personality
+                        )
+                
+                self._save_model_configs()
+                return True
+                
+        except Exception as e:
+            print(f"Failed to add model config {model_name}: {e}")
+            return False
+    
+    def update_model_config_status(self, provider: AIProvider, model_name: str, status: str) -> bool:
+        """Update the status of a model configuration"""
+        try:
+            with self.lock:
+                provider_key = provider.value
+                if provider_key in self.model_configs and model_name in self.model_configs[provider_key]:
+                    model_config = self.model_configs[provider_key][model_name]
+                    old_status = model_config.status
+                    model_config.status = status
+                    model_config.updated_at = datetime.now()
+                    
+                    # Update legacy whitelisted_models
+                    if status == "enabled" and old_status == "disabled":
+                        # Add to whitelist
+                        for model_id in model_config.model_ids:
+                            self.whitelisted_models[provider].add(model_id)
+                    elif status == "disabled" and old_status == "enabled":
+                        # Remove from whitelist
+                        for model_id in model_config.model_ids:
+                            self.whitelisted_models[provider].discard(model_id)
+                    
+                    self._save_model_configs()
+                    print(f"🔄 Updated {model_name} status: {old_status} -> {status}")
+                    return True
+                
+                return False
+                
+        except Exception as e:
+            print(f"Failed to update model config status {model_name}: {e}")
+            return False
+    
+    def get_model_configs(self, provider: AIProvider = None) -> Dict:
+        """Get all model configurations or for a specific provider"""
+        if provider:
+            provider_key = provider.value
+            return self.model_configs.get(provider_key, {})
+        return self.model_configs
+    
+    def delete_model_config(self, provider: AIProvider, model_name: str) -> bool:
+        """Delete a model configuration"""
+        try:
+            with self.lock:
+                provider_key = provider.value
+                if provider_key in self.model_configs and model_name in self.model_configs[provider_key]:
+                    model_config = self.model_configs[provider_key][model_name]
+                    
+                    # Remove from legacy whitelisted_models
+                    for model_id in model_config.model_ids:
+                        self.whitelisted_models[provider].discard(model_id)
+                        if model_id in self.models:
+                            del self.models[model_id]
+                    
+                    # Remove from new config system
+                    del self.model_configs[provider_key][model_name]
+                    
+                    self._save_model_configs()
+                    print(f"🗑️ Deleted model config: {model_name}")
+                    return True
+                
+                return False
+                
+        except Exception as e:
+            print(f"Failed to delete model config {model_name}: {e}")
+            return False
     
     def track_model_usage(self, user_token: str, model_id: str, input_tokens: int, 
                          output_tokens: int, success: bool = True) -> Optional[float]:

@@ -20,29 +20,62 @@ model_families_bp = Blueprint('model_families', __name__, url_prefix='/admin/mod
 def model_families_dashboard():
     """Model families management dashboard"""
     
-    # Get all providers and their whitelisted models
+    # Get model configurations from new system
+    model_configs = model_manager.get_model_configs()
+    
+    # Build providers data using new structure
     providers_data = {}
     total_models = 0
-    total_whitelisted = 0
+    total_enabled = 0
     
     for provider in AIProvider:
+        provider_key = provider.value
+        provider_configs = model_configs.get(provider_key, {})
+        
+        # Get legacy models for backwards compatibility display
         all_models = model_manager.get_all_models(provider)
         whitelisted_models = model_manager.get_whitelisted_models(provider)
         
-        # Define anchor default models that can never be deleted
-        anchor_defaults = {
-            "gpt-4o", "claude-3-5-sonnet-20241022"
-        }
+        # Convert model configs to display format
+        config_models = []
+        for model_name, model_config in provider_configs.items():
+            config_models.append({
+                'config_name': model_name,
+                'sanitized_name': model_manager.sanitize_key(model_name),  # For URLs
+                'display_name': model_config.display_name,
+                'description': model_config.description,
+                'status': model_config.status,
+                'model_ids': model_config.model_ids,
+                'model_ids_count': len(model_config.model_ids),
+                'input_cost': model_config.input_cost_per_1m,
+                'output_cost': model_config.output_cost_per_1m,
+                'context_length': model_config.context_length,
+                'is_premium': model_config.is_premium,
+                'cat_emoji': model_config.get_cat_emoji(),
+                'cat_personality': model_config.cat_personality,
+                'max_input_tokens': model_config.max_input_tokens,
+                'max_output_tokens': model_config.max_output_tokens,
+                'supports_streaming': model_config.supports_streaming,
+                'supports_function_calling': model_config.supports_function_calling,
+                'created_at': model_config.created_at.isoformat() if model_config.created_at else None,
+                'updated_at': model_config.updated_at.isoformat() if model_config.updated_at else None
+            })
+            
+            if model_config.status == "enabled":
+                total_enabled += 1
         
-        # All default models (including ones that can be deleted)
-        default_model_ids = {
-            "gpt-4o", "claude-3-5-sonnet-20241022"
-        }
-        
-        providers_data[provider.value] = {
-            'name': provider.value.title(),
-            'all_models': [
-                {
+        # Legacy models not in new config system
+        legacy_models = []
+        for model in all_models:
+            # Check if this model is part of any config
+            found_in_config = False
+            for config in provider_configs.values():
+                if model.model_id in config.model_ids:
+                    found_in_config = True
+                    break
+            
+            if not found_in_config:
+                legacy_models.append({
                     'id': model.model_id,
                     'display_name': model.display_name,
                     'description': model.description,
@@ -55,19 +88,21 @@ def model_families_dashboard():
                     'cat_personality': model.cat_personality,
                     'max_input_tokens': model.max_input_tokens,
                     'max_output_tokens': model.max_output_tokens,
-                    'is_default': model.model_id in default_model_ids,
-                    'can_delete': model.model_id not in anchor_defaults,
                     'supports_streaming': model.supports_streaming,
                     'supports_function_calling': model.supports_function_calling
-                }
-                for model in all_models
-            ],
-            'whitelisted_count': len(whitelisted_models),
-            'total_count': len(all_models)
+                })
+        
+        providers_data[provider.value] = {
+            'name': provider.value.title(),
+            'model_configs': config_models,
+            'legacy_models': legacy_models,
+            'config_count': len(config_models),
+            'enabled_count': len([c for c in config_models if c['status'] == 'enabled']),
+            'legacy_count': len(legacy_models),
+            'legacy_whitelisted_count': len([m for m in legacy_models if m['is_whitelisted']])
         }
         
-        total_models += len(all_models)
-        total_whitelisted += len(whitelisted_models)
+        total_models += len(config_models) + len(legacy_models)
     
     # Get usage statistics
     global_usage = model_manager.get_usage_stats()
@@ -76,13 +111,14 @@ def model_families_dashboard():
     dashboard_config = {
         'brand_name': 'NyanProxy',
         'brand_emoji': '🐱',
+        'new_system': True  # Flag to indicate new model config system
     }
     
     return render_template('admin/model_families.html',
                          config=dashboard_config,
                          providers=providers_data,
                          total_models=total_models,
-                         total_whitelisted=total_whitelisted,
+                         total_enabled=total_enabled,
                          usage_stats=global_usage,
                          cost_analysis=cost_analysis)
 
@@ -535,5 +571,261 @@ def get_global_totals():
             'totals': global_totals
         })
         
+    except Exception as e:
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@model_families_bp.route('/api/model-configs')
+@require_admin_session
+def get_model_configs():
+    """Get all model configurations from the new Firebase structure"""
+    try:
+        provider_param = request.args.get('provider')
+        
+        if provider_param:
+            from ..services.model_families import AIProvider
+            provider = AIProvider(provider_param.lower())
+            provider_configs = model_manager.get_model_configs(provider)
+            print(f"🔍 Got configs for provider {provider_param}: {provider_configs}")
+            # Wrap single provider result in the expected structure
+            configs = {provider_param.lower(): provider_configs}
+        else:
+            configs = model_manager.get_model_configs()
+            print(f"🔍 Got all configs: {configs}")
+        
+        # Add sanitized names for frontend URL usage
+        enhanced_configs = {}
+        for provider_key, provider_configs in configs.items():
+            print(f"🔍 Processing provider {provider_key} with {len(provider_configs)} configs")
+            enhanced_configs[provider_key] = {}
+            for model_name, model_config in provider_configs.items():
+                print(f"🔍 Processing config {model_name}: {type(model_config)}")
+                config_dict = model_config.to_dict() if hasattr(model_config, 'to_dict') else model_config
+                config_dict['sanitized_name'] = model_manager.sanitize_key(model_name)
+                enhanced_configs[provider_key][model_name] = config_dict
+        
+        return jsonify({
+            'success': True,
+            'model_configs': enhanced_configs
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"❌ Error in get_model_configs: {str(e)}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@model_families_bp.route('/api/model-configs', methods=['POST'])
+@require_admin_session
+def create_model_config():
+    """Create a new model configuration"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        required_fields = ['provider', 'display_name', 'model_ids']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+        
+        from ..services.model_families import AIProvider, ModelConfig
+        
+        provider = AIProvider(data['provider'].lower())
+        
+        # Use display_name as the model_name (config identifier)
+        model_name = data.get('model_name', data['display_name'])
+        
+        model_config = ModelConfig(
+            model_name=model_name,
+            provider=provider,
+            status=data.get('status', 'disabled'),
+            model_ids=data['model_ids'],
+            display_name=data['display_name'],
+            description=data.get('description', ''),
+            input_cost_per_1m=float(data.get('input_cost_per_1m', 0.0)),
+            output_cost_per_1m=float(data.get('output_cost_per_1m', 0.0)),
+            context_length=int(data.get('context_length', 4096)),
+            max_input_tokens=int(data['max_input_tokens']) if data.get('max_input_tokens') else None,
+            max_output_tokens=int(data['max_output_tokens']) if data.get('max_output_tokens') else None,
+            supports_streaming=bool(data.get('supports_streaming', True)),
+            supports_function_calling=bool(data.get('supports_function_calling', False)),
+            is_premium=bool(data.get('is_premium', False)),
+            cat_personality=data.get('cat_personality', 'curious')
+        )
+        
+        success = model_manager.add_model_config(provider, model_name, model_config)
+        
+        if success:
+            structured_logger.log_user_action(
+                user_token='admin',
+                action='model_config_created',
+                details={
+                    'provider': provider.value,
+                    'model_name': model_name,
+                    'status': model_config.status,
+                    'model_ids_count': len(model_config.model_ids)
+                },
+                admin_user='admin'
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': f'Model configuration {model_name} created successfully'
+            })
+        else:
+            return jsonify({'error': 'Failed to create model configuration'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@model_families_bp.route('/api/model-configs/<provider>/<model_name>', methods=['PUT'])
+@require_admin_session
+def update_model_config(provider: str, model_name: str):
+    """Update a model configuration"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        from ..services.model_families import AIProvider
+        provider_enum = AIProvider(provider.lower())
+        
+        # Unsanitize model name from URL
+        actual_model_name = model_manager.unsanitize_key(model_name)
+        
+        # Get current model config
+        model_configs = model_manager.get_model_configs(provider_enum)
+        if actual_model_name not in model_configs:
+            return jsonify({'error': 'Model configuration not found'}), 404
+        
+        current_config = model_configs[actual_model_name]
+        
+        # Update fields from request data
+        if 'display_name' in data:
+            current_config.display_name = data['display_name']
+        if 'description' in data:
+            current_config.description = data['description']
+        if 'model_ids' in data:
+            current_config.model_ids = data['model_ids']
+        if 'input_cost_per_1m' in data:
+            current_config.input_cost_per_1m = float(data['input_cost_per_1m'])
+        if 'output_cost_per_1m' in data:
+            current_config.output_cost_per_1m = float(data['output_cost_per_1m'])
+        if 'context_length' in data:
+            current_config.context_length = int(data['context_length'])
+        if 'max_input_tokens' in data:
+            current_config.max_input_tokens = int(data['max_input_tokens']) if data['max_input_tokens'] else None
+        if 'max_output_tokens' in data:
+            current_config.max_output_tokens = int(data['max_output_tokens']) if data['max_output_tokens'] else None
+        if 'supports_streaming' in data:
+            current_config.supports_streaming = bool(data['supports_streaming'])
+        if 'supports_function_calling' in data:
+            current_config.supports_function_calling = bool(data['supports_function_calling'])
+        if 'is_premium' in data:
+            current_config.is_premium = bool(data['is_premium'])
+        if 'cat_personality' in data:
+            current_config.cat_personality = data['cat_personality']
+        
+        # Update timestamp
+        from datetime import datetime
+        current_config.updated_at = datetime.now()
+        
+        # Save the updated config
+        success = model_manager.add_model_config(provider_enum, actual_model_name, current_config)
+        
+        if success:
+            structured_logger.log_user_action(
+                user_token='admin',
+                action='model_config_updated',
+                details={
+                    'provider': provider,
+                    'model_name': actual_model_name,
+                    'updated_fields': list(data.keys())
+                },
+                admin_user='admin'
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': f'Model configuration {actual_model_name} updated successfully'
+            })
+        else:
+            return jsonify({'error': 'Failed to update model configuration'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@model_families_bp.route('/api/model-configs/<provider>/<model_name>/status', methods=['PUT'])
+@require_admin_session
+def update_model_config_status(provider: str, model_name: str):
+    """Update the status of a model configuration"""
+    try:
+        data = request.get_json()
+        if not data or 'status' not in data:
+            return jsonify({'error': 'Status is required'}), 400
+        
+        status = data['status']
+        if status not in ['enabled', 'disabled']:
+            return jsonify({'error': 'Status must be enabled or disabled'}), 400
+        
+        from ..services.model_families import AIProvider
+        provider_enum = AIProvider(provider.lower())
+        
+        # Unsanitize model name from URL
+        actual_model_name = model_manager.unsanitize_key(model_name)
+        success = model_manager.update_model_config_status(provider_enum, actual_model_name, status)
+        
+        if success:
+            structured_logger.log_user_action(
+                user_token='admin',
+                action='model_config_status_updated',
+                details={
+                    'provider': provider,
+                    'model_name': actual_model_name,
+                    'new_status': status
+                },
+                admin_user='admin'
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': f'Model configuration status updated to {status}'
+            })
+        else:
+            return jsonify({'error': 'Model configuration not found'}), 404
+            
+    except Exception as e:
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@model_families_bp.route('/api/model-configs/<provider>/<model_name>', methods=['DELETE'])
+@require_admin_session
+def delete_model_config(provider: str, model_name: str):
+    """Delete a model configuration"""
+    try:
+        from ..services.model_families import AIProvider
+        provider_enum = AIProvider(provider.lower())
+        
+        # Unsanitize model name from URL
+        actual_model_name = model_manager.unsanitize_key(model_name)
+        success = model_manager.delete_model_config(provider_enum, actual_model_name)
+        
+        if success:
+            structured_logger.log_user_action(
+                user_token='admin',
+                action='model_config_deleted',
+                details={
+                    'provider': provider,
+                    'model_name': actual_model_name
+                },
+                admin_user='admin'
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': f'Model configuration {model_name} deleted successfully'
+            })
+        else:
+            return jsonify({'error': 'Model configuration not found'}), 404
+            
     except Exception as e:
         return jsonify({'error': f'Server error: {str(e)}'}), 500

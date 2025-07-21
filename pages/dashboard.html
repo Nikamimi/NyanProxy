@@ -1277,6 +1277,9 @@
                     const hasUsage = modelData.has_usage || false;
                     const isPremium = modelData.is_premium || false;
                     const catPersonality = modelData.cat_personality || 'curious';
+                    const fromNewSystem = modelData.from_new_system || false;
+                    const modelIdsCount = modelData.model_ids_count || 1;
+                    const activeModelIds = modelData.active_model_ids || [];
                     
                     // Get cat emoji based on personality
                     const catEmojis = {
@@ -1295,10 +1298,18 @@
                     const statusBadge = hasUsage ? '' : '<span style="font-size: 0.7em; color: #999; background: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 4px; margin-left: 5px;">Available</span>';
                     const premiumBadge = isPremium ? '<span style="font-size: 0.7em; color: #ff6b6b; background: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 4px; margin-left: 5px;">Premium</span>' : '';
                     
+                    // Add model snapshots badge for new system
+                    const snapshotsBadge = fromNewSystem && modelIdsCount > 1 ? 
+                        `<span style="font-size: 0.7em; color: #4ecdc4; background: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 4px; margin-left: 5px;" title="${modelData.model_ids ? modelData.model_ids.join(', ') : activeModelIds.join(', ')}">${modelIdsCount} snapshots</span>` : '';
+                    
+                    // Add tooltip with active model IDs if from new system
+                    const tooltip = fromNewSystem && activeModelIds.length > 0 ? 
+                        `title="Active model IDs: ${activeModelIds.join(', ')}"` : '';
+                    
                     modelsHTML += `
-                        <div class="${cardClass}" style="${cardStyle}">
+                        <div class="${cardClass}" style="${cardStyle}" ${tooltip}>
                             <div class="model-header">
-                                <div class="model-name">${catEmoji} ${modelName}${statusBadge}${premiumBadge}</div>
+                                <div class="model-name">${catEmoji} ${modelName}${statusBadge}${premiumBadge}${snapshotsBadge}</div>
                                 <div class="model-cost">${hasUsage ? '$' + cost.toFixed(4) : 'Ready'}</div>
                             </div>
                             <div class="model-metrics">

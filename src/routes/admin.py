@@ -821,10 +821,10 @@ def get_my_user_stats():
 @admin_bp.route('/model-usage-stats', methods=['GET'])
 def get_model_usage_stats():
     """
-    Get all active/whitelisted models with their usage statistics for the dashboard.
+    Get all enabled models from the new model config system with their usage statistics.
     
-    This endpoint only returns models that are explicitly whitelisted in the model_families_config.json
-    to ensure the dashboard Key Status section only shows models that are actually enabled.
+    Returns models from Firebase model_config structure where status is "enabled".
+    Falls back to legacy whitelisted models for backward compatibility.
     """
     try:
         from ..services.model_families import model_manager, AIProvider
@@ -832,41 +832,137 @@ def get_model_usage_stats():
         # Get global usage stats for models that have been used
         global_stats = model_manager.get_usage_stats()
         
-        # Organize stats by provider, including all whitelisted models
+        # Get model configurations from new system
+        model_configs = model_manager.get_model_configs()
+        
+        # Organize stats by provider using new model config system
         provider_stats = {}
         
-        # Iterate through all providers and their whitelisted models
-        for provider in AIProvider:
-            provider_key = provider.value
-            whitelisted_models = model_manager.get_whitelisted_models(provider)
-            
-            if not whitelisted_models:
+        # Process new model config system first
+        for provider_key, provider_configs in model_configs.items():
+            if not provider_configs:
                 continue
-                
+            
             provider_stats[provider_key] = {}
             
-            for model_info in whitelisted_models:
-                model_id = model_info.model_id
-                sanitized_key = model_manager.sanitize_key(model_id)
+            for model_name, model_config in provider_configs.items():
+                # Only include enabled models
+                if model_config.status != "enabled":
+                    continue
                 
-                # Get usage stats if available, otherwise use zeros
-                model_stats = global_stats.get(model_id, {})
-                
-                provider_stats[provider_key][sanitized_key] = {
-                    'model_name': model_info.display_name,
-                    'model_id': model_id,
-                    'description': model_info.description,
-                    'cat_personality': model_info.cat_personality,
-                    'is_premium': model_info.is_premium,
-                    'total_requests': model_stats.get('total_requests', 0),
-                    'total_input_tokens': model_stats.get('total_input_tokens', 0),
-                    'total_output_tokens': model_stats.get('total_output_tokens', 0),
-                    'total_cost': model_stats.get('total_cost', 0.0),
-                    'success_rate': model_stats.get('success_rate', 100.0),
-                    'last_used': model_stats.get('last_used'),
-                    'first_used': model_stats.get('first_used'),
-                    'has_usage': model_id in global_stats
+                # Aggregate stats across all model_ids for this logical model
+                aggregated_stats = {
+                    'total_requests': 0,
+                    'total_input_tokens': 0,
+                    'total_output_tokens': 0,
+                    'total_cost': 0.0,
+                    'success_rate': 0.0,
+                    'last_used': None,
+                    'first_used': None,
+                    'has_usage': False,
+                    'active_model_ids': []
                 }
+                
+                total_requests_for_avg = 0
+                success_rates = []
+                
+                for model_id in model_config.model_ids:
+                    model_stats = global_stats.get(model_id, {})
+                    
+                    if model_id in global_stats:
+                        aggregated_stats['has_usage'] = True
+                        aggregated_stats['active_model_ids'].append(model_id)
+                    
+                    # Aggregate numerical stats
+                    aggregated_stats['total_requests'] += model_stats.get('total_requests', 0)
+                    aggregated_stats['total_input_tokens'] += model_stats.get('total_input_tokens', 0)
+                    aggregated_stats['total_output_tokens'] += model_stats.get('total_output_tokens', 0)
+                    aggregated_stats['total_cost'] += model_stats.get('total_cost', 0.0)
+                    
+                    # Track for success rate calculation
+                    requests = model_stats.get('total_requests', 0)
+                    if requests > 0:
+                        total_requests_for_avg += requests
+                        success_rates.append((model_stats.get('success_rate', 100.0), requests))
+                    
+                    # Track usage dates
+                    if model_stats.get('last_used'):
+                        if not aggregated_stats['last_used'] or model_stats['last_used'] > aggregated_stats['last_used']:
+                            aggregated_stats['last_used'] = model_stats['last_used']
+                    
+                    if model_stats.get('first_used'):
+                        if not aggregated_stats['first_used'] or model_stats['first_used'] < aggregated_stats['first_used']:
+                            aggregated_stats['first_used'] = model_stats['first_used']
+                
+                # Calculate weighted average success rate
+                if success_rates:
+                    weighted_sum = sum(rate * requests for rate, requests in success_rates)
+                    aggregated_stats['success_rate'] = weighted_sum / total_requests_for_avg if total_requests_for_avg > 0 else 100.0
+                else:
+                    aggregated_stats['success_rate'] = 100.0
+                
+                # Use model name as the key (sanitized for consistency)
+                sanitized_model_name = model_manager.sanitize_key(model_name)
+                
+                provider_stats[provider_key][sanitized_model_name] = {
+                    'model_name': model_config.display_name,
+                    'config_name': model_name,
+                    'model_ids': model_config.model_ids,
+                    'active_model_ids': aggregated_stats['active_model_ids'],
+                    'description': model_config.description,
+                    'cat_personality': model_config.cat_personality,
+                    'is_premium': model_config.is_premium,
+                    'total_requests': aggregated_stats['total_requests'],
+                    'total_input_tokens': aggregated_stats['total_input_tokens'],
+                    'total_output_tokens': aggregated_stats['total_output_tokens'],
+                    'total_cost': aggregated_stats['total_cost'],
+                    'success_rate': aggregated_stats['success_rate'],
+                    'last_used': aggregated_stats['last_used'],
+                    'first_used': aggregated_stats['first_used'],
+                    'has_usage': aggregated_stats['has_usage'],
+                    'from_new_system': True,
+                    'model_ids_count': len(model_config.model_ids)
+                }
+        
+        # Fall back to legacy whitelisted models if no new configs exist
+        if not model_configs:
+            for provider in AIProvider:
+                provider_key = provider.value
+                whitelisted_models = model_manager.get_whitelisted_models(provider)
+                
+                if not whitelisted_models:
+                    continue
+                    
+                if provider_key not in provider_stats:
+                    provider_stats[provider_key] = {}
+                
+                for model_info in whitelisted_models:
+                    model_id = model_info.model_id
+                    sanitized_key = model_manager.sanitize_key(model_id)
+                    
+                    # Skip if already processed in new system
+                    if sanitized_key in provider_stats[provider_key]:
+                        continue
+                    
+                    # Get usage stats if available, otherwise use zeros
+                    model_stats = global_stats.get(model_id, {})
+                    
+                    provider_stats[provider_key][sanitized_key] = {
+                        'model_name': model_info.display_name,
+                        'model_id': model_id,
+                        'description': model_info.description,
+                        'cat_personality': model_info.cat_personality,
+                        'is_premium': model_info.is_premium,
+                        'total_requests': model_stats.get('total_requests', 0),
+                        'total_input_tokens': model_stats.get('total_input_tokens', 0),
+                        'total_output_tokens': model_stats.get('total_output_tokens', 0),
+                        'total_cost': model_stats.get('total_cost', 0.0),
+                        'success_rate': model_stats.get('success_rate', 100.0),
+                        'last_used': model_stats.get('last_used'),
+                        'first_used': model_stats.get('first_used'),
+                        'has_usage': model_id in global_stats,
+                        'from_new_system': False
+                    }
         
         return jsonify(provider_stats)
         
