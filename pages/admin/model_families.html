@@ -466,6 +466,63 @@
             </div>
         </div>
         {% endfor %}
+        
+        <!-- Static provider cards for new families without backend support yet -->
+        <!-- Deepseek Provider Card -->
+        {% if 'deepseek' not in providers %}
+        <div class="provider-card">
+            <div class="provider-header">
+                <div class="provider-name">Deepseek</div>
+                <div class="provider-stats">
+                    0/0 configs enabled
+                </div>
+            </div>
+            
+            <div class="model-list">
+                <!-- Empty state -->
+                <div style="text-align: center; padding: 20px; color: #666; font-style: italic;">
+                    No models configured for Deepseek. Click "Add New Model" to get started!
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button onclick="toggleAllProviderModels('deepseek', true)" 
+                        class="btn btn-sm btn-success">Enable All</button>
+                <button onclick="toggleAllProviderModels('deepseek', false)" 
+                        class="btn btn-sm btn-secondary">Disable All</button>
+                <a href="{{ url_for('model_families.provider_details', provider_name='deepseek') }}" 
+                   class="btn btn-sm btn-info">Details</a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Grok Provider Card -->
+        {% if 'grok' not in providers %}
+        <div class="provider-card">
+            <div class="provider-header">
+                <div class="provider-name">Grok</div>
+                <div class="provider-stats">
+                    0/0 configs enabled
+                </div>
+            </div>
+            
+            <div class="model-list">
+                <!-- Empty state -->
+                <div style="text-align: center; padding: 20px; color: #666; font-style: italic;">
+                    No models configured for Grok. Click "Add New Model" to get started!
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button onclick="toggleAllProviderModels('grok', true)" 
+                        class="btn btn-sm btn-success">Enable All</button>
+                <button onclick="toggleAllProviderModels('grok', false)" 
+                        class="btn btn-sm btn-secondary">Disable All</button>
+                <a href="{{ url_for('model_families.provider_details', provider_name='grok') }}" 
+                   class="btn btn-sm btn-info">Details</a>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -492,6 +549,8 @@
                         <option value="mistral">Mistral</option>
                         <option value="groq">Groq</option>
                         <option value="cohere">Cohere</option>
+                        <option value="deepseek">Deepseek</option>
+                        <option value="grok">Grok</option>
                     </select>
                 </div>
                 <div class="form-group">
