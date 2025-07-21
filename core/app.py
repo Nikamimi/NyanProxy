@@ -169,7 +169,7 @@ class ConnectionPoolManager:
                     total=3,
                     backoff_factor=1,
                     status_forcelist=[429, 500, 502, 503, 504],
-                    method_whitelist=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"]
+                    allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"]
                 )
                 
                 # Configure connection pooling
@@ -183,8 +183,9 @@ class ConnectionPoolManager:
                 session.mount("http://", adapter)
                 session.mount("https://", adapter)
                 
-                # Set timeouts
-                session.timeout = (10, 30)  # (connect, read) timeout
+                # Note: timeout is set per request, not on session
+                # Store default timeout values for this service
+                session._default_timeout = (10, 30)  # (connect, read) timeout
                 
                 self.sessions[service] = session
                 print(f"🔗 Created connection pool for {service}")
@@ -956,7 +957,8 @@ def openai_chat_completions():
                 'https://api.openai.com/v1/chat/completions',
                 headers=headers,
                 json=request.json,
-                stream=request.json.get('stream', False)
+                stream=request.json.get('stream', False),
+                timeout=getattr(session, '_default_timeout', (10, 30))
             )
             
             response_time = time.time() - start_time
@@ -1663,7 +1665,8 @@ def anthropic_messages():
                 'https://api.anthropic.com/v1/messages',
                 headers=headers,
                 json=request.json,
-                stream=request.json.get('stream', False)
+                stream=request.json.get('stream', False),
+                timeout=getattr(session, '_default_timeout', (10, 30))
             )
             
             response_time = time.time() - start_time
@@ -1910,7 +1913,7 @@ def google_gemini_proxy(model_path):
                         'Content-Type': 'application/json',
                         'User-Agent': 'NyanProxy/1.0'
                     },
-                    timeout=120,
+                    timeout=(10, 120),  # (connect_timeout, read_timeout)
                     stream=True
                 )
             else:
@@ -1930,7 +1933,7 @@ def google_gemini_proxy(model_path):
                         'Content-Type': 'application/json',
                         'User-Agent': 'NyanProxy/1.0'
                     },
-                    timeout=120
+                    timeout=(10, 120)  # (connect_timeout, read_timeout)
                 )
             
             
