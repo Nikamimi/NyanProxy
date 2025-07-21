@@ -58,6 +58,72 @@
         </div>
     </div>
 
+    <!-- Conversation Logging Section -->
+    <div class="config-section">
+        <h2>🗣️ Conversation Logging</h2>
+        <div class="logging-controls">
+            <div class="logging-status">
+                <div class="status-item">
+                    <label class="status-label">Logging Status:</label>
+                    <span class="status-indicator" id="loggingStatus">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <label class="status-label">Google Sheets:</label>
+                    <span class="status-indicator" id="sheetsStatus">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <label class="status-label">Queue Size:</label>
+                    <span class="status-value" id="queueSize">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <label class="status-label">Total Logged:</label>
+                    <span class="status-value" id="totalLogged">Loading...</span>
+                </div>
+            </div>
+            
+            <div class="logging-settings">
+                <div class="setting-group">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="loggingEnabled" onchange="toggleLogging()">
+                        <span class="slider"></span>
+                        <span class="toggle-label">Enable Conversation Logging</span>
+                    </label>
+                </div>
+                
+                <div class="setting-group" id="loggingOptions" style="display: none;">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="logInput" onchange="updateLoggingSettings()">
+                        <span class="slider"></span>
+                        <span class="toggle-label">Log User Inputs</span>
+                    </label>
+                    
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="logOutput" onchange="updateLoggingSettings()">
+                        <span class="slider"></span>
+                        <span class="toggle-label">Log Model Outputs</span>
+                    </label>
+                    
+                    <div class="input-group">
+                        <label for="maxInputLength">Last # of characters:</label>
+                        <input type="number" id="maxInputLength" placeholder="Leave blank for unlimited" min="1" max="10000" step="100" onchange="updateLoggingSettings()">
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="logging-actions">
+                <button class="action-btn secondary" onclick="refreshLoggingStats()">🔄 Refresh Stats</button>
+                <button class="action-btn secondary" onclick="viewLoggingLogs()">📋 View Logs</button>
+                <button class="action-btn primary" onclick="openGoogleSheets()">📊 Open Google Sheets</button>
+                <button class="action-btn warning" onclick="configureGoogleSheets()" style="font-size: 0.9em;">⚙️ Configure Sheets</button>
+                <button class="action-btn secondary" onclick="debugLoggingConfig()" style="font-size: 0.8em;">🔍 Debug Config</button>
+                <button class="action-btn secondary" onclick="forceSaveConfig()" style="font-size: 0.8em;">💾 Force Save</button>
+                <button class="action-btn secondary" onclick="testGoogleSheetsConfig()" style="font-size: 0.7em;">🧪 Test Sheets</button>
+                <button class="action-btn secondary" onclick="checkDependencies()" style="font-size: 0.7em;">📦 Check Deps</button>
+            </div>
+        </div>
+    </div>
+
     <!-- System Health Section -->
     <div class="config-section">
         <h2>🔧 System Health & Performance</h2>
@@ -522,6 +588,164 @@
         margin-bottom: 5px;
     }
 
+    /* Conversation Logging Styles */
+    .logging-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .logging-status {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+
+    .status-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .status-label {
+        font-size: 0.85em;
+        color: #6c757d;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+
+    .status-indicator {
+        font-weight: bold;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.9em;
+    }
+
+    .status-indicator.enabled {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-indicator.disabled {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .status-indicator.connected {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .status-indicator.disconnected {
+        background: #f5c6cb;
+        color: #721c24;
+    }
+
+    .status-value {
+        font-weight: bold;
+        color: #495057;
+        font-size: 1.2em;
+    }
+
+    .logging-settings {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+
+    .setting-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    /* Toggle Switch Styles */
+    .toggle-switch {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        font-size: 0.95em;
+    }
+
+    .toggle-switch input[type="checkbox"] {
+        display: none;
+    }
+
+    .slider {
+        width: 50px;
+        height: 24px;
+        background-color: #ccc;
+        border-radius: 24px;
+        position: relative;
+        transition: background-color 0.3s;
+    }
+
+    .slider:before {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background-color: white;
+        transition: transform 0.3s;
+    }
+
+    .toggle-switch input:checked + .slider {
+        background-color: #007bff;
+    }
+
+    .toggle-switch input:checked + .slider:before {
+        transform: translateX(26px);
+    }
+
+    .toggle-label {
+        font-weight: 500;
+        color: #495057;
+    }
+
+    .input-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .input-group label {
+        font-size: 0.9em;
+        color: #6c757d;
+        min-width: 120px;
+    }
+
+    .input-group input[type="number"] {
+        width: 100px;
+        padding: 6px 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 0.9em;
+    }
+
+    .logging-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+
     /* Responsive Design */
     @media (max-width: 768px) {
         .dashboard-container {
@@ -864,5 +1088,618 @@ function initHealthMonitoringWhenReady() {
 
 // Start initialization
 initHealthMonitoringWhenReady();
+
+// Conversation Logging Functions
+let currentSpreadsheetId = null;
+
+async function loadLoggingStats() {
+    console.log('🗣️ Loading conversation logging stats...');
+    try {
+        const response = await fetch('/api/admin/logging/stats');
+        console.log('📊 Logging stats response status:', response.status);
+        
+        if (response.ok) {
+            const stats = await response.json();
+            console.log('📊 Logging stats data:', stats);
+            updateLoggingDisplay(stats);
+        } else {
+            const errorText = await response.text();
+            console.error('Failed to load logging stats:', response.status, errorText);
+            showLoggingError('HTTP ' + response.status);
+        }
+    } catch (error) {
+        console.error('Error loading logging stats:', error);
+        showLoggingError('Network Error: ' + error.message);
+    }
+}
+
+function updateLoggingDisplay(stats) {
+    // Update status indicators
+    const loggingStatus = document.getElementById('loggingStatus');
+    const sheetsStatus = document.getElementById('sheetsStatus');
+    const queueSize = document.getElementById('queueSize');
+    const totalLogged = document.getElementById('totalLogged');
+    
+    // Update logging status
+    loggingStatus.textContent = stats.enabled ? 'Enabled' : 'Disabled';
+    loggingStatus.className = `status-indicator ${stats.enabled ? 'enabled' : 'disabled'}`;
+    
+    // Update Google Sheets status
+    sheetsStatus.textContent = stats.sheets_connected ? 'Connected' : 'Disconnected';
+    sheetsStatus.className = `status-indicator ${stats.sheets_connected ? 'connected' : 'disconnected'}`;
+    
+    // Update queue and total stats
+    queueSize.textContent = stats.queue_size || 0;
+    totalLogged.textContent = (stats.total_logged || 0).toLocaleString();
+    
+    // Update form controls
+    const loggingEnabled = document.getElementById('loggingEnabled');
+    const logInput = document.getElementById('logInput');
+    const logOutput = document.getElementById('logOutput');
+    const maxInputLength = document.getElementById('maxInputLength');
+    const loggingOptions = document.getElementById('loggingOptions');
+    
+    loggingEnabled.checked = stats.enabled;
+    logInput.checked = stats.log_input;
+    logOutput.checked = stats.log_output;
+    maxInputLength.value = stats.last_number_of_chars || '';
+    
+    // Show/hide options based on enabled status
+    loggingOptions.style.display = stats.enabled ? 'block' : 'none';
+    
+    console.log('📊 Logging display updated successfully');
+}
+
+function showLoggingError(errorMessage = 'Error') {
+    console.log('❌ Showing logging error:', errorMessage);
+    const statusElements = ['loggingStatus', 'sheetsStatus', 'queueSize', 'totalLogged'];
+    
+    statusElements.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            if (id.includes('Status')) {
+                element.textContent = 'Error';
+                element.className = 'status-indicator disabled';
+            } else {
+                element.textContent = errorMessage.length > 15 ? 'Error' : errorMessage;
+            }
+        }
+    });
+}
+
+async function toggleLogging() {
+    const enabled = document.getElementById('loggingEnabled').checked;
+    console.log('🗣️ Toggling logging:', enabled);
+    
+    try {
+        const response = await fetch('/api/admin/logging/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ enabled: enabled })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                console.log('✅ Logging toggle successful');
+                // Refresh stats to reflect changes
+                setTimeout(loadLoggingStats, 1000);
+            } else {
+                alert('Failed to toggle logging: ' + (result.error || 'Unknown error'));
+                // Revert checkbox
+                document.getElementById('loggingEnabled').checked = !enabled;
+            }
+        } else {
+            const errorText = await response.text();
+            alert('Failed to toggle logging: HTTP ' + response.status + ' - ' + errorText);
+            // Revert checkbox
+            document.getElementById('loggingEnabled').checked = !enabled;
+        }
+    } catch (error) {
+        console.error('Error toggling logging:', error);
+        alert('Error toggling logging: ' + error.message);
+        // Revert checkbox
+        document.getElementById('loggingEnabled').checked = !enabled;
+    }
+}
+
+async function updateLoggingSettings() {
+    const settings = {
+        log_input: document.getElementById('logInput').checked,
+        log_output: document.getElementById('logOutput').checked,
+        last_number_of_chars: parseInt(document.getElementById('maxInputLength').value) || null
+    };
+    
+    console.log('🗣️ Updating logging settings:', settings);
+    
+    try {
+        const response = await fetch('/api/admin/logging/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                console.log('✅ Logging settings updated');
+                showSuccessMessage('Logging settings updated');
+            } else {
+                alert('Failed to update settings: ' + (result.error || 'Unknown error'));
+            }
+        } else {
+            const errorText = await response.text();
+            alert('Failed to update settings: HTTP ' + response.status + ' - ' + errorText);
+        }
+    } catch (error) {
+        console.error('Error updating logging settings:', error);
+        alert('Error updating settings: ' + error.message);
+    }
+}
+
+function refreshLoggingStats() {
+    loadLoggingStats();
+}
+
+function viewLoggingLogs() {
+    window.open('/api/admin/logging/stats', '_blank');
+}
+
+async function openGoogleSheets() {
+    if (!currentSpreadsheetId) {
+        // Try to get the spreadsheet ID from the server
+        try {
+            const response = await fetch('/api/admin/logging/config');
+            if (response.ok) {
+                const config = await response.json();
+                currentSpreadsheetId = config.google_sheets?.spreadsheet_id;
+            }
+        } catch (error) {
+            console.error('Failed to get spreadsheet ID:', error);
+        }
+    }
+    
+    if (currentSpreadsheetId) {
+        const url = `https://docs.google.com/spreadsheets/d/${currentSpreadsheetId}/edit`;
+        window.open(url, '_blank');
+    } else {
+        alert('Google Sheets not configured. Please configure Google Sheets first.');
+        configureGoogleSheets();
+    }
+}
+
+function configureGoogleSheets() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h3>🗣️ Configure Google Sheets Logging</h3>
+            <div class="form-group">
+                <label for="spreadsheetId">Google Sheets ID:</label>
+                <input type="text" id="spreadsheetId" placeholder="Enter your Google Sheets ID" style="width: 100%; padding: 8px; margin: 8px 0;">
+                <small>Find this in your Google Sheets URL: docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</small>
+            </div>
+            <div class="form-group">
+                <label for="serviceAccountKey">Service Account JSON:</label>
+                <textarea id="serviceAccountKey" placeholder="Paste your Google Service Account JSON key here" rows="8" style="width: 100%; padding: 8px; margin: 8px 0;"></textarea>
+                <small>Generate this from Google Cloud Console > Service Accounts</small>
+            </div>
+            <div class="modal-actions">
+                <button class="action-btn secondary" onclick="closeConfigModal()">Cancel</button>
+                <button class="action-btn secondary" onclick="showServiceAccountEmail()" style="font-size: 0.8em;">📧 Show Email</button>
+                <button class="action-btn warning" onclick="testGoogleSheetsConnection()">🧪 Test Connection</button>
+                <button class="action-btn primary" onclick="saveGoogleSheetsConfig()">Save Configuration</button>
+            </div>
+        </div>
+    `;
+    
+    // Add modal styles
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 10000;
+        display: flex; align-items: center; justify-content: center;
+    `;
+    
+    const modalContent = modal.querySelector('.modal-content');
+    modalContent.style.cssText = `
+        background: white; padding: 30px; border-radius: 8px;
+        max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+function closeConfigModal() {
+    const modal = document.querySelector('.modal-overlay');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+async function saveGoogleSheetsConfig() {
+    const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
+    const serviceAccountKey = document.getElementById('serviceAccountKey').value.trim();
+    
+    if (!spreadsheetId || !serviceAccountKey) {
+        alert('Please fill in both the Spreadsheet ID and Service Account JSON');
+        return;
+    }
+    
+    try {
+        // Validate JSON
+        JSON.parse(serviceAccountKey);
+    } catch (e) {
+        alert('Invalid JSON in Service Account Key');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/logging/configure', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                google_sheets: {
+                    spreadsheet_id: spreadsheetId,
+                    service_account_key: serviceAccountKey
+                }
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                currentSpreadsheetId = spreadsheetId;
+                alert('Google Sheets configuration saved successfully!');
+                closeConfigModal();
+                // Refresh stats to show updated connection status
+                setTimeout(loadLoggingStats, 1000);
+            } else {
+                alert('Failed to save configuration: ' + (result.error || 'Unknown error'));
+            }
+        } else {
+            const errorText = await response.text();
+            alert('Failed to save configuration: HTTP ' + response.status + ' - ' + errorText);
+        }
+    } catch (error) {
+        console.error('Error saving configuration:', error);
+        alert('Error saving configuration: ' + error.message);
+    }
+}
+
+// Initialize conversation logging monitoring
+function initializeLoggingMonitoring() {
+    if (window.loggingMonitoringStarted) {
+        console.log('🗣️ Logging monitoring already started, skipping...');
+        return;
+    }
+    
+    window.loggingMonitoringStarted = true;
+    console.log('🗣️ Initializing conversation logging monitoring...');
+    
+    // Load immediately with a delay
+    setTimeout(function() {
+        console.log('🔄 Loading initial logging stats...');
+        loadLoggingStats();
+    }, 2000);
+    
+    // Set up auto-refresh every 60 seconds for logging stats
+    setInterval(function() {
+        console.log('🔄 Auto-refreshing logging stats...');
+        loadLoggingStats();
+    }, 60000);
+}
+
+function showSuccessMessage(message) {
+    // Simple success feedback - could be enhanced with a proper notification system
+    const tempAlert = document.createElement('div');
+    tempAlert.style.cssText = `
+        position: fixed; top: 20px; right: 20px; z-index: 9999;
+        background: #d4edda; color: #155724; padding: 12px 20px;
+        border: 1px solid #c3e6cb; border-radius: 6px;
+        font-size: 14px; font-weight: 500;
+    `;
+    tempAlert.textContent = message;
+    document.body.appendChild(tempAlert);
+    
+    setTimeout(() => {
+        tempAlert.remove();
+    }, 3000);
+}
+
+async function debugLoggingConfig() {
+    try {
+        const response = await fetch('/api/admin/logging/debug');
+        if (response.ok) {
+            const debugInfo = await response.json();
+            
+            let debugMessage = '🔍 Conversation Logging Debug Info:\n\n';
+            debugMessage += `Firebase Connected: ${debugInfo.firebase_connected}\n`;
+            debugMessage += `Config Key: ${debugInfo.config_key}\n`;
+            debugMessage += `Raw Config Exists: ${debugInfo.raw_config_exists}\n`;
+            debugMessage += `Raw Config Keys: ${debugInfo.raw_config_keys?.join(', ') || 'None'}\n`;
+            debugMessage += `Logger Enabled: ${debugInfo.logger_enabled}\n`;
+            debugMessage += `Sheets Logger Exists: ${debugInfo.sheets_logger_exists}\n`;
+            debugMessage += `Sheets Connected: ${debugInfo.sheets_connected}\n\n`;
+            
+            if (debugInfo.google_sheets_debug) {
+                const sheets = debugInfo.google_sheets_debug;
+                debugMessage += '📊 Google Sheets Debug:\n';
+                debugMessage += `Has Spreadsheet ID: ${sheets.has_spreadsheet_id}\n`;
+                debugMessage += `Spreadsheet ID Length: ${sheets.spreadsheet_id_length} chars\n`;
+                debugMessage += `Has Service Account Key (base64): ${sheets.has_service_account_key_b64}\n`;
+                debugMessage += `Service Account Key Length: ${sheets.service_account_key_b64_length} chars\n`;
+                debugMessage += `Has Plain Service Account Key: ${sheets.has_plain_service_account_key}\n`;
+                debugMessage += `Connected Status: ${sheets.connected_status}\n`;
+            } else {
+                debugMessage += '📊 No Google Sheets config found in Firebase\n';
+            }
+            
+            alert(debugMessage);
+        } else {
+            const errorText = await response.text();
+            alert('Debug request failed: ' + response.status + ' - ' + errorText);
+        }
+    } catch (error) {
+        console.error('Debug request error:', error);
+        alert('Debug request error: ' + error.message);
+    }
+}
+
+async function forceSaveConfig() {
+    try {
+        const response = await fetch('/api/admin/logging/save-config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                showSuccessMessage('Configuration forcefully saved to Firebase');
+            } else {
+                alert('Failed to save configuration: ' + (result.error || 'Unknown error'));
+            }
+        } else {
+            const errorText = await response.text();
+            alert('Failed to save configuration: HTTP ' + response.status + ' - ' + errorText);
+        }
+    } catch (error) {
+        console.error('Force save error:', error);
+        alert('Error saving configuration: ' + error.message);
+    }
+}
+
+function showServiceAccountEmail() {
+    const serviceAccountKey = document.getElementById('serviceAccountKey').value.trim();
+    
+    if (!serviceAccountKey) {
+        alert('Please paste your Service Account JSON first');
+        return;
+    }
+    
+    try {
+        const keyData = JSON.parse(serviceAccountKey);
+        const email = keyData.client_email;
+        const projectId = keyData.project_id;
+        
+        if (email) {
+            let message = '📧 SERVICE ACCOUNT EMAIL:\n\n';
+            message += `${email}\n\n`;
+            message += '📋 COPY THIS EMAIL and follow these steps:\n\n';
+            message += '1. 📊 Open your Google Sheet in browser\n';
+            message += '2. 🔗 Click "Share" button (top-right)\n';
+            message += '3. ✉️ Paste this email address\n';
+            message += '4. ⚙️ Set permission to "Editor"\n';
+            message += '5. 📤 Click "Send"\n';
+            message += '6. 🔄 Come back and test connection\n\n';
+            message += `Project: ${projectId || 'Unknown'}`;
+            
+            alert(message);
+        } else {
+            alert('❌ Could not find client_email in the JSON.\nPlease check your Service Account JSON format.');
+        }
+    } catch (e) {
+        alert('❌ Invalid JSON format.\nPlease check your Service Account JSON.');
+    }
+}
+
+async function testGoogleSheetsConnection() {
+    const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
+    const serviceAccountKey = document.getElementById('serviceAccountKey').value.trim();
+    
+    if (!spreadsheetId || !serviceAccountKey) {
+        alert('Please fill in both the Spreadsheet ID and Service Account JSON before testing');
+        return;
+    }
+    
+    try {
+        // Validate JSON first
+        JSON.parse(serviceAccountKey);
+    } catch (e) {
+        alert('Invalid JSON in Service Account Key. Please check the format.');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/logging/test-sheets', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                spreadsheet_id: spreadsheetId,
+                service_account_key: serviceAccountKey
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                let message = '✅ Google Sheets Connection Successful!\n\n';
+                message += `📊 Spreadsheet: ${result.spreadsheet_title}\n`;
+                message += `📋 Worksheets: ${result.worksheet_count} (${result.worksheet_names.join(', ')})\n`;
+                message += `🔐 Service Account: ${result.service_account_email}\n\n`;
+                message += 'You can now safely save this configuration.';
+                alert(message);
+            } else {
+                let message = '❌ Google Sheets Connection Failed\n\n';
+                message += `Error: ${result.error}\n\n`;
+                
+                if (result.error.includes('Spreadsheet not found') || result.error.includes('PermissionError')) {
+                    message += 'SOLUTION - Follow these steps:\n\n';
+                    message += '1. 📋 COPY the service account email from your JSON:\n';
+                    message += '   Look for "client_email" in your JSON file\n\n';
+                    message += '2. 📊 OPEN your Google Sheet in a browser\n\n';
+                    message += '3. 🔗 CLICK the "Share" button (top-right)\n\n';
+                    message += '4. ✉️ PASTE the service account email\n\n';
+                    message += '5. ⚙️ SET permissions to "Editor"\n\n';
+                    message += '6. 📤 CLICK "Send" (no notification needed)\n\n';
+                    message += '7. 🔄 TRY the test again\n\n';
+                    message += 'The service account email should look like:\n';
+                    message += 'your-service@your-project.iam.gserviceaccount.com';
+                } else if (result.error.includes('Invalid JSON')) {
+                    message += 'Please check your Service Account JSON format.';
+                } else if (result.error.includes('Missing dependencies')) {
+                    message += 'Google Sheets dependencies are not installed.\n';
+                    message += 'Please install: pip install gspread google-auth';
+                }
+                
+                alert(message);
+            }
+        } else {
+            const errorText = await response.text();
+            alert('Test request failed: HTTP ' + response.status + ' - ' + errorText);
+        }
+    } catch (error) {
+        console.error('Test connection error:', error);
+        alert('Test connection error: ' + error.message);
+    }
+}
+
+async function testGoogleSheetsConfig() {
+    try {
+        // First, let's test with a simple configuration to see if it gets saved
+        const testConfig = {
+            enabled: false, // Keep logging disabled for testing
+            google_sheets: {
+                spreadsheet_id: "test_spreadsheet_id_12345",
+                service_account_key: JSON.stringify({
+                    "type": "service_account",
+                    "project_id": "test-project",
+                    "private_key_id": "test-key-id",
+                    "private_key": "-----BEGIN PRIVATE KEY-----\nTEST_KEY\n-----END PRIVATE KEY-----\n",
+                    "client_email": "test@test.iam.gserviceaccount.com",
+                    "client_id": "test-client-id",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token"
+                })
+            }
+        };
+        
+        console.log('🧪 Testing Google Sheets configuration with test data...');
+        
+        const response = await fetch('/api/admin/logging/configure', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(testConfig)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                showSuccessMessage('Test configuration sent successfully');
+                
+                // Wait a moment, then check debug info
+                setTimeout(async () => {
+                    const debugResponse = await fetch('/api/admin/logging/debug');
+                    if (debugResponse.ok) {
+                        const debugInfo = await debugResponse.json();
+                        console.log('🧪 Debug info after test:', debugInfo);
+                        
+                        let message = '🧪 Test Results:\n\n';
+                        if (debugInfo.google_sheets_debug) {
+                            const sheets = debugInfo.google_sheets_debug;
+                            message += `✅ Google Sheets config found in Firebase\n`;
+                            message += `✅ Has Spreadsheet ID: ${sheets.has_spreadsheet_id}\n`;
+                            message += `✅ Has Service Account Key: ${sheets.has_service_account_key_b64}\n`;
+                            message += `📏 Key Length: ${sheets.service_account_key_b64_length} chars\n`;
+                        } else {
+                            message += `❌ No Google Sheets config found in Firebase\n`;
+                            message += `❌ The configuration was not saved properly\n`;
+                        }
+                        
+                        alert(message);
+                    }
+                }, 2000);
+            } else {
+                alert('Test failed: ' + (result.error || 'Unknown error'));
+            }
+        } else {
+            const errorText = await response.text();
+            alert('Test request failed: HTTP ' + response.status + ' - ' + errorText);
+        }
+    } catch (error) {
+        console.error('Test error:', error);
+        alert('Test error: ' + error.message);
+    }
+}
+
+async function checkDependencies() {
+    try {
+        const response = await fetch('/api/admin/logging/check-deps');
+        if (response.ok) {
+            const deps = await response.json();
+            
+            let message = '📦 Dependency Status Check:\n\n';
+            
+            // Firebase status
+            if (deps.firebase) {
+                if (deps.firebase.available) {
+                    message += `✅ Firebase: Available (v${deps.firebase.version})\n`;
+                } else {
+                    message += `❌ Firebase: Not available - ${deps.firebase.error}\n`;
+                }
+            }
+            
+            // Google Sheets status
+            if (deps.google_sheets) {
+                if (deps.google_sheets.available) {
+                    message += `✅ Google Sheets: Available (gspread v${deps.google_sheets.gspread_version})\n`;
+                } else {
+                    message += `❌ Google Sheets: Not available - ${deps.google_sheets.error}\n`;
+                    message += `   Install with: pip install gspread google-auth\n`;
+                }
+            }
+            
+            message += '\n🔧 Conversation Logger Status:\n';
+            if (deps.conversation_logger) {
+                message += `Firebase Connected: ${deps.conversation_logger.firebase_connected}\n`;
+                message += `Sheets Logger Exists: ${deps.conversation_logger.sheets_logger_exists}\n`;
+                message += `Sheets Connected: ${deps.conversation_logger.sheets_connected}\n`;
+            }
+            
+            alert(message);
+        } else {
+            const errorText = await response.text();
+            alert('Dependencies check failed: HTTP ' + response.status + ' - ' + errorText);
+        }
+    } catch (error) {
+        console.error('Dependencies check error:', error);
+        alert('Dependencies check error: ' + error.message);
+    }
+}
+
+// Start logging monitoring
+initializeLoggingMonitoring();
 </script>
 {% endblock %}

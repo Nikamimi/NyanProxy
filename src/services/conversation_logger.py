@@ -9,16 +9,54 @@ from queue import Queue, Empty
 import hashlib
 
 # Google Sheets API imports
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials
-    GSPREAD_AVAILABLE = True
-    print("Google Sheets integration available")
-except ImportError as e:
-    print("Warning: Google Sheets integration not available.")
-    print("Install required packages: pip install gspread google-auth")
-    print(f"Import error details: {e}")
-    GSPREAD_AVAILABLE = False
+def try_import_gspread():
+    """Try to import gspread and install if missing"""
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+        print("✅ Google Sheets integration available")
+        return True, gspread, Credentials
+    except ImportError as e:
+        print(f"❌ Google Sheets integration not available: {e}")
+        print("🔧 Attempting to install missing packages...")
+        
+        try:
+            import subprocess
+            import sys
+            
+            # Try to install the missing packages
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", 
+                "gspread>=6.2.1", "google-auth>=2.40.3", 
+                "--quiet", "--disable-pip-version-check"
+            ])
+            
+            print("📦 Packages installed, attempting to import again...")
+            
+            # Try importing again
+            import gspread
+            from google.oauth2.service_account import Credentials
+            print("✅ Google Sheets integration now available after installation")
+            return True, gspread, Credentials
+            
+        except subprocess.CalledProcessError as install_error:
+            print(f"❌ Failed to auto-install packages: {install_error}")
+        except ImportError as import_error:
+            print(f"❌ Still can't import after installation: {import_error}")
+        except Exception as other_error:
+            print(f"❌ Unexpected error during auto-installation: {other_error}")
+        
+        return False, None, None
+
+# Attempt to import and auto-install if needed
+GSPREAD_AVAILABLE, gspread, Credentials = try_import_gspread()
+
+# Fallback if auto-installation failed
+if not GSPREAD_AVAILABLE:
+    print("🚫 Google Sheets integration unavailable.")
+    print("💡 Manual installation: pip install gspread google-auth")
+    gspread = None
+    Credentials = None
 
 # Firebase imports
 try:
@@ -48,23 +86,12 @@ class ConversationEntry:
     conversation_id: Optional[str]
     
     def to_row(self) -> List[str]:
-        """Convert to spreadsheet row format"""
+        """Convert to spreadsheet row format - simplified 4-column format"""
         return [
-            self.timestamp,
-            self.user_token[:8] + "...",  # Only show first 8 chars for privacy
-            self.user_nickname or "Anonymous",
-            self.model_family,
-            self.model_name,
-            self.input_text[:1000] + ("..." if len(self.input_text) > 1000 else ""),  # Truncate long inputs
-            self.output_text[:1000] + ("..." if len(self.output_text) > 1000 else ""),  # Truncate long outputs
-            str(self.input_tokens),
-            str(self.output_tokens),
-            str(self.total_tokens),
-            f"${self.cost_usd:.6f}",
-            self.ip_hash[:10] + "..." if self.ip_hash else "",
-            self.user_agent or "",
-            self.session_id or "",
-            self.conversation_id or ""
+            self.input_text,   # A column: Input
+            self.output_text,  # B column: Output  
+            self.timestamp,    # C column: Timestamp
+            self.model_name    # D column: Model Name
         ]
 
 class GoogleSheetsLogger:
@@ -167,13 +194,14 @@ class GoogleSheetsLogger:
             self.spreadsheet = None
             return False
     
-    def get_or_create_worksheet(self, nickname: str) -> Optional[Any]:
-        """Get or create worksheet for user nickname"""
+    def get_or_create_worksheet(self, user_identifier: str, nickname: str = None) -> Optional[Any]:
+        """Get or create worksheet for user (using nickname but fallback to token)"""
         if not self.client or not self.spreadsheet:
             return None
         
-        # Sanitize nickname for sheet name (Google Sheets limits)
-        sheet_name = self._sanitize_sheet_name(nickname)
+        # Use nickname if available, otherwise use user token for sheet name
+        identifier = nickname if nickname and nickname != "Anonymous" else user_identifier
+        sheet_name = self._sanitize_sheet_name(identifier)
         
         with self.lock:
             # Check cache first
@@ -188,20 +216,15 @@ class GoogleSheetsLogger:
             except gspread.WorksheetNotFound:
                 # Create new worksheet
                 try:
-                    worksheet = self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=16)
+                    worksheet = self.spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=4)
                     print(f"📊 Google Sheets: Created new sheet '{sheet_name}'")
                     
-                    # Add headers
-                    headers = [
-                        "Timestamp", "User Token", "Nickname", "Model Family", "Model Name",
-                        "Input Text", "Output Text", "Input Tokens", "Output Tokens", 
-                        "Total Tokens", "Cost (USD)", "IP Hash", "User Agent", 
-                        "Session ID", "Conversation ID"
-                    ]
+                    # Add headers - simplified 4-column format
+                    headers = ["Input", "Output", "Timestamp", "Model Name"]
                     worksheet.append_row(headers)
                     
                     # Format header row
-                    worksheet.format('A1:P1', {
+                    worksheet.format('A1:D1', {
                         'backgroundColor': {'red': 0.9, 'green': 0.9, 'blue': 0.9},
                         'textFormat': {'bold': True}
                     })
@@ -232,7 +255,7 @@ class GoogleSheetsLogger:
             return False
         
         try:
-            worksheet = self.get_or_create_worksheet(entry.user_nickname)
+            worksheet = self.get_or_create_worksheet(entry.user_token, entry.user_nickname)
             if not worksheet:
                 return False
             
@@ -250,21 +273,24 @@ class GoogleSheetsLogger:
             return False
         
         try:
-            # Group entries by nickname for efficient batching
-            entries_by_nickname = {}
+            # Group entries by user identifier for efficient batching
+            entries_by_user = {}
             for entry in entries:
-                nickname = entry.user_nickname or "Anonymous"
-                if nickname not in entries_by_nickname:
-                    entries_by_nickname[nickname] = []
-                entries_by_nickname[nickname].append(entry)
+                # Use nickname if available, otherwise use user token
+                user_key = entry.user_nickname if entry.user_nickname and entry.user_nickname != "Anonymous" else entry.user_token
+                if user_key not in entries_by_user:
+                    entries_by_user[user_key] = []
+                entries_by_user[user_key].append(entry)
             
             # Batch append to each worksheet
-            for nickname, nickname_entries in entries_by_nickname.items():
-                worksheet = self.get_or_create_worksheet(nickname)
+            for user_key, user_entries in entries_by_user.items():
+                # Get the first entry to extract user info for worksheet creation
+                first_entry = user_entries[0]
+                worksheet = self.get_or_create_worksheet(first_entry.user_token, first_entry.user_nickname)
                 if worksheet:
-                    rows = [entry.to_row() for entry in nickname_entries]
+                    rows = [entry.to_row() for entry in user_entries]
                     worksheet.append_rows(rows)
-                    print(f"📊 Google Sheets: Batched {len(rows)} entries for '{nickname}'")
+                    print(f"📊 Google Sheets: Batched {len(rows)} entries for '{user_key}'")
             
             return True
             
@@ -279,7 +305,7 @@ class ConversationLogger:
         self.enabled = False  # Start disabled to prevent 500 errors
         self.log_input = True
         self.log_output = True
-        self.max_input_length = 5000
+        self.last_number_of_chars = 5000
         self.max_output_length = 5000
         self.retention_days = 30
         
@@ -307,7 +333,7 @@ class ConversationLogger:
         
         # Firebase configuration persistence
         self.firebase_db = None
-        self.config_key = 'config/conversation_logging'
+        self.config_key = 'configs/conversation_logging'
         
         # Initialize Firebase and load saved configuration
         self._initialize_firebase()
@@ -336,75 +362,102 @@ class ConversationLogger:
             try:
                 if firebase_admin._apps:
                     self.firebase_db = db.reference()
-                    print("Successfully connected to Firebase for conversation logging")
+                    print("🔥 Successfully connected to Firebase for conversation logging")
                     self._load_config_from_firebase()
                     return True
+                else:
+                    print("🚫 Firebase apps not initialized yet for conversation logging")
             except Exception as e:
-                print(f"Failed to reconnect to Firebase: {e}")
-        return False
+                print(f"❌ Failed to reconnect to Firebase: {e}")
+        elif not FIREBASE_AVAILABLE:
+            print("🚫 Firebase not available (firebase-admin not installed)")
+        elif self.firebase_db:
+            print("🔥 Firebase already connected for conversation logging")
+        return bool(self.firebase_db)
     
     def _load_config_from_firebase(self):
         """Load conversation logging configuration from Firebase"""
         if not self.firebase_db:
+            print("🚫 Firebase not available - cannot load conversation logging config")
             return
         
         try:
+            print(f"📖 Loading conversation logging config from Firebase at: {self.config_key}")
             config_ref = self.firebase_db.child(self.config_key)
             saved_config = config_ref.get()
             
             if saved_config:
-                print("Loading conversation logging configuration from Firebase")
+                print("📖 Found saved conversation logging configuration in Firebase")
+                print(f"📖 Config keys found: {list(saved_config.keys())}")
                 
                 # Load basic settings
                 self.enabled = saved_config.get('enabled', False)
                 self.log_input = saved_config.get('log_input', True)
                 self.log_output = saved_config.get('log_output', True)
-                self.max_input_length = saved_config.get('max_input_length', 5000)
+                self.last_number_of_chars = saved_config.get('last_number_of_chars', saved_config.get('max_input_length', 5000))  # Backward compatibility
                 self.max_output_length = saved_config.get('max_output_length', 5000)
                 self.retention_days = saved_config.get('retention_days', 30)
                 
                 # Load Google Sheets configuration if present
                 sheets_config = saved_config.get('google_sheets')
-                if sheets_config and GSPREAD_AVAILABLE:
-                    spreadsheet_id = sheets_config.get('spreadsheet_id')
-                    
-                    # Try to load base64 encoded key first (new format)
-                    service_account_key_b64 = sheets_config.get('service_account_key_b64')
-                    service_account_key = None
-                    
-                    if service_account_key_b64:
-                        try:
-                            # Decode from base64
-                            service_account_key = base64.b64decode(service_account_key_b64).decode('utf-8')
-                        except Exception as e:
-                            print(f"Failed to decode base64 service account key: {e}")
-                    
-                    # Fallback to old format (plain text) for backward compatibility
-                    if not service_account_key:
-                        service_account_key = sheets_config.get('service_account_key')
-                    
-                    if spreadsheet_id and service_account_key:
-                        try:
-                            self.sheets_logger = GoogleSheetsLogger(service_account_key, spreadsheet_id)
-                            with self.stats_lock:
-                                self.stats['sheets_connected'] = bool(self.sheets_logger.client)
-                        except Exception as e:
-                            print(f"Failed to initialize Google Sheets from saved config: {e}")
+                if sheets_config:
+                    print(f"📊 Found Google Sheets config: {list(sheets_config.keys())}")
+                    if GSPREAD_AVAILABLE:
+                        spreadsheet_id = sheets_config.get('spreadsheet_id')
+                        print(f"📊 Spreadsheet ID: {spreadsheet_id}")
+                        
+                        # Try to load base64 encoded key first (new format)
+                        service_account_key_b64 = sheets_config.get('service_account_key_b64')
+                        service_account_key = None
+                        
+                        if service_account_key_b64:
+                            print(f"📊 Found base64 service account key ({len(service_account_key_b64)} chars)")
+                            try:
+                                # Decode from base64
+                                service_account_key = base64.b64decode(service_account_key_b64).decode('utf-8')
+                                print("📊 Successfully decoded base64 service account key")
+                            except Exception as e:
+                                print(f"❌ Failed to decode base64 service account key: {e}")
+                        
+                        # Fallback to old format (plain text) for backward compatibility
+                        if not service_account_key:
+                            service_account_key = sheets_config.get('service_account_key')
+                            if service_account_key:
+                                print("📊 Using plain text service account key (fallback)")
+                        
+                        if spreadsheet_id and service_account_key:
+                            try:
+                                print("📊 Initializing Google Sheets logger...")
+                                self.sheets_logger = GoogleSheetsLogger(service_account_key, spreadsheet_id)
+                                with self.stats_lock:
+                                    self.stats['sheets_connected'] = bool(self.sheets_logger.client)
+                                print("✅ Google Sheets logger initialized successfully")
+                            except Exception as e:
+                                print(f"❌ Failed to initialize Google Sheets from saved config: {e}")
+                        else:
+                            print("❌ Missing spreadsheet_id or service_account_key")
+                    else:
+                        print("❌ Google Sheets not available (gspread not installed)")
+                else:
+                    print("📊 No Google Sheets config found in saved configuration")
                 
                 # Start worker thread if enabled
                 if self.enabled and not self.worker_thread:
                     self.start_worker()
                 
-                print(f"Loaded conversation logging config - Enabled: {self.enabled}, Sheets: {bool(self.sheets_logger)}")
+                print(f"✅ Loaded conversation logging config - Enabled: {self.enabled}, Sheets: {bool(self.sheets_logger)}")
             else:
-                print("No saved conversation logging configuration found")
+                print("📖 No saved conversation logging configuration found in Firebase")
                 
         except Exception as e:
-            print(f"Failed to load conversation logging config from Firebase: {e}")
+            print(f"❌ Failed to load conversation logging config from Firebase: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _save_config_to_firebase(self):
         """Save current conversation logging configuration to Firebase"""
         if not self.firebase_db:
+            print("🚫 Firebase not available - cannot save conversation logging config")
             return False
         
         try:
@@ -412,58 +465,97 @@ class ConversationLogger:
                 'enabled': self.enabled,
                 'log_input': self.log_input,
                 'log_output': self.log_output,
-                'max_input_length': self.max_input_length,
+                'last_number_of_chars': self.last_number_of_chars,
                 'max_output_length': self.max_output_length,
                 'retention_days': self.retention_days,
                 'last_updated': datetime.now().isoformat()
             }
             
-            # Include Google Sheets config if present
+            # Include Google Sheets config if present (even if logging is disabled)
             if self.sheets_logger:
-                # Base64 encode the service account key for safe Firebase storage
-                service_account_key_b64 = base64.b64encode(
-                    self.sheets_logger.service_account_key.encode('utf-8')
-                ).decode('utf-8')
-                
-                config_data['google_sheets'] = {
-                    'spreadsheet_id': self.sheets_logger.spreadsheet_id,
-                    'service_account_key_b64': service_account_key_b64,
-                    'connected': bool(self.sheets_logger.client)
-                }
+                print("📝 Google Sheets logger exists, preparing to save configuration...")
+                try:
+                    # Base64 encode the service account key for safe Firebase storage
+                    service_account_key_b64 = base64.b64encode(
+                        self.sheets_logger.service_account_key.encode('utf-8')
+                    ).decode('utf-8')
+                    
+                    config_data['google_sheets'] = {
+                        'spreadsheet_id': self.sheets_logger.spreadsheet_id,
+                        'service_account_key_b64': service_account_key_b64,
+                        'connected': bool(self.sheets_logger.client)
+                    }
+                    
+                    print(f"📝 Saving Google Sheets config - Spreadsheet ID: {self.sheets_logger.spreadsheet_id}")
+                    print(f"📝 Service account key length: {len(service_account_key_b64)} chars (base64)")
+                    print(f"📝 Google Sheets connected: {bool(self.sheets_logger.client)}")
+                except Exception as e:
+                    print(f"❌ Error preparing Google Sheets config for save: {e}")
+            else:
+                print("📝 No Google Sheets logger configured - skipping Google Sheets config")
+            
+            print(f"📝 Saving conversation logging config to Firebase at: {self.config_key}")
+            print(f"📝 Config data keys: {list(config_data.keys())}")
             
             config_ref = self.firebase_db.child(self.config_key)
             config_ref.set(config_data)
             
-            print("Conversation logging configuration saved to Firebase")
+            print("✅ Conversation logging configuration saved to Firebase successfully")
             return True
             
         except Exception as e:
-            print(f"Failed to save conversation logging config to Firebase: {e}")
+            print(f"❌ Failed to save conversation logging config to Firebase: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def configure(self, config: Dict[str, Any]) -> bool:
         """Configure the conversation logger"""
         try:
-            self.enabled = config.get('enabled', False)
-            self.log_input = config.get('log_input', True)
-            self.log_output = config.get('log_output', True)
-            self.max_input_length = config.get('max_input_length', 5000)
-            self.max_output_length = config.get('max_output_length', 5000)
-            self.retention_days = config.get('retention_days', 30)
+            print(f"🔧 Configuring conversation logger with config keys: {list(config.keys())}")
             
-            # Configure Google Sheets if enabled
-            if self.enabled and config.get('google_sheets'):
+            # Only update enabled if explicitly provided, otherwise keep current value
+            if 'enabled' in config:
+                self.enabled = config['enabled']
+                print(f"🔧 Updated enabled status to: {self.enabled}")
+            
+            self.log_input = config.get('log_input', self.log_input)
+            self.log_output = config.get('log_output', self.log_output)
+            self.last_number_of_chars = config.get('last_number_of_chars', config.get('max_input_length', self.last_number_of_chars))  # Backward compatibility
+            self.max_output_length = config.get('max_output_length', self.max_output_length)
+            self.retention_days = config.get('retention_days', self.retention_days)
+            
+            print(f"🔧 Current configuration - Enabled: {self.enabled}, Input: {self.log_input}, Output: {self.log_output}")
+            
+            # Configure Google Sheets if provided (regardless of enabled state)
+            if config.get('google_sheets'):
+                print("🔧 Configuring Google Sheets...")
                 sheets_config = config['google_sheets']
                 service_account_key = sheets_config.get('service_account_key')
                 spreadsheet_id = sheets_config.get('spreadsheet_id')
                 
+                print(f"🔧 Spreadsheet ID provided: {bool(spreadsheet_id)}")
+                print(f"🔧 Service account key provided: {bool(service_account_key)}")
+                
                 if service_account_key and spreadsheet_id:
-                    self.sheets_logger = GoogleSheetsLogger(service_account_key, spreadsheet_id)
-                    
-                    with self.stats_lock:
-                        self.stats['sheets_connected'] = bool(self.sheets_logger.client)
+                    try:
+                        print("🔧 Creating GoogleSheetsLogger...")
+                        self.sheets_logger = GoogleSheetsLogger(service_account_key, spreadsheet_id)
+                        
+                        with self.stats_lock:
+                            self.stats['sheets_connected'] = bool(self.sheets_logger.client)
+                        
+                        if self.sheets_logger.client:
+                            print(f"✅ Google Sheets logger created and connected successfully")
+                            print(f"📊 Spreadsheet: {getattr(self.sheets_logger.spreadsheet, 'title', 'Unknown')}")
+                        else:
+                            print(f"❌ Google Sheets logger created but connection failed")
+                            print(f"🔧 Check: 1) Spreadsheet ID is correct, 2) Service account has access, 3) Dependencies installed")
+                    except Exception as e:
+                        print(f"❌ Failed to create Google Sheets logger: {e}")
+                        return False
                 else:
-                    print("🚫 Conversation Logger: Missing Google Sheets configuration")
+                    print("🚫 Conversation Logger: Missing Google Sheets spreadsheet_id or service_account_key")
                     return False
             
             # Start worker thread if enabled
@@ -475,7 +567,7 @@ class ConversationLogger:
             print(f"Conversation Logger: {'Enabled' if self.enabled else 'Disabled'}")
             if self.enabled:
                 print(f"Conversation Logger: Input={self.log_input}, Output={self.log_output}")
-                print(f"Conversation Logger: Max lengths: Input={self.max_input_length}, Output={self.max_output_length}")
+                print(f"Conversation Logger: Last chars: {self.last_number_of_chars}, Max output length: {self.max_output_length}")
                 print(f"Conversation Logger: Retention={self.retention_days} days")
             
             # Save configuration to Firebase for persistence
@@ -581,8 +673,9 @@ class ConversationLogger:
             logged_output = output_text if self.log_output else "[Output logging disabled]"
             
             # Apply length limits
-            if len(logged_input) > self.max_input_length:
-                logged_input = logged_input[:self.max_input_length] + "...[truncated]"
+            # Apply last N characters limit for input
+            if self.last_number_of_chars and len(logged_input) > self.last_number_of_chars:
+                logged_input = "...[truncated]" + logged_input[-self.last_number_of_chars:]
             if len(logged_output) > self.max_output_length:
                 logged_output = logged_output[:self.max_output_length] + "...[truncated]"
             
@@ -632,7 +725,7 @@ class ConversationLogger:
                 'queue_size': self.log_queue.qsize(),
                 'log_input': self.log_input,
                 'log_output': self.log_output,
-                'max_input_length': self.max_input_length,
+                'last_number_of_chars': self.last_number_of_chars,
                 'max_output_length': self.max_output_length,
                 'retention_days': self.retention_days
             }
@@ -646,7 +739,7 @@ class ConversationLogger:
             self.enabled = settings.get('enabled', self.enabled)
             self.log_input = settings.get('log_input', self.log_input)
             self.log_output = settings.get('log_output', self.log_output)
-            self.max_input_length = settings.get('max_input_length', self.max_input_length)
+            self.last_number_of_chars = settings.get('last_number_of_chars', settings.get('max_input_length', self.last_number_of_chars))  # Backward compatibility
             self.max_output_length = settings.get('max_output_length', self.max_output_length)
             
             # Handle worker thread state changes

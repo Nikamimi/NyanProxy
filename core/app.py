@@ -48,6 +48,7 @@ from src.routes.admin_web import admin_web_bp
 from src.routes.model_families_admin import model_families_bp
 from src.middleware.auth import generate_csrf_token
 from src.services.model_families import model_manager, AIProvider
+from src.services.conversation_logger import conversation_logger
 
 class ThreadManager:
     """Manages background threads and prevents resource leaks"""
@@ -770,6 +771,33 @@ print(f"🐱 NyanProxy starting up at {startup_time.isoformat()}")
 print(f"🔧 Process ID: {os.getpid()}")
 print(f"🧵 Main thread ID: {threading.current_thread().ident}")
 
+# Initialize conversation logger
+try:
+    import sys
+    print(f"🐍 Python executable: {sys.executable}")
+    print(f"🐍 Python version: {sys.version}")
+    print(f"🐍 Python path: {sys.path[:3]}...")  # Show first 3 paths
+    
+    # Test imports
+    try:
+        import gspread
+        print(f"✅ gspread imported successfully - version: {gspread.__version__}")
+    except ImportError as e:
+        print(f"❌ Failed to import gspread: {e}")
+    
+    try:
+        from google.oauth2.service_account import Credentials
+        print(f"✅ google-auth imported successfully")
+    except ImportError as e:
+        print(f"❌ Failed to import google-auth: {e}")
+    
+    conversation_logger.reconnect_firebase()
+    print(f"🗣️ Conversation logger initialized - Enabled: {conversation_logger.enabled}")
+except Exception as e:
+    print(f"⚠️ Warning: Failed to initialize conversation logger: {e}")
+    import traceback
+    traceback.print_exc()
+
 # Check for previous crash/restart indicators
 restart_file = os.path.join(os.path.dirname(__file__), '..', '.restart_count')
 try:
@@ -1237,6 +1265,72 @@ def openai_chat_completions():
                     ip_hash=g.auth_data.get('ip', ''),
                     user_agent=request.headers.get('User-Agent')
                 )
+                
+                # Log conversation if enabled
+                try:
+                    if conversation_logger.enabled and response.status_code == 200:
+                        # Extract input text from request
+                        input_text = ""
+                        if request_json.get('messages'):
+                            # Convert messages to readable format
+                            messages = request_json['messages']
+                            input_parts = []
+                            for msg in messages:
+                                role = msg.get('role', 'unknown')
+                                content = msg.get('content', '')
+                                input_parts.append(f"{role}: {content}")
+                            input_text = "\n".join(input_parts)
+                        
+                        # Extract output text from response  
+                        output_text = ""
+                        try:
+                            # For streaming responses, extract content from the accumulated stream
+                            if is_streaming and response_content:
+                                content_str = response_content.decode('utf-8') if isinstance(response_content, bytes) else str(response_content)
+                                import re
+                                # Extract all content from delta fields in streaming chunks
+                                content_matches = re.findall(r'"delta":\s*{[^}]*"content":\s*"([^"]*)"', content_str)
+                                output_text = ''.join(content_matches).replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
+                                
+                                if not output_text.strip():
+                                    # Fallback: try to extract from message content
+                                    message_matches = re.findall(r'"message":\s*{[^}]*"content":\s*"([^"]*)"', content_str)
+                                    output_text = ''.join(message_matches).replace('\\n', '\n').replace('\\"', '"').replace('\\/', '/')
+                            
+                            # For non-streaming responses, parse JSON normally
+                            if not output_text.strip():
+                                response_data = json.loads(response_content) if response_content else {}
+                                if 'choices' in response_data and response_data['choices']:
+                                    choice = response_data['choices'][0]
+                                    if 'message' in choice:
+                                        output_text = choice['message'].get('content', '')
+                                    elif 'text' in choice:
+                                        output_text = choice.get('text', '')
+                                        
+                        except Exception as e:
+                            print(f"🚫 DEBUG: Could not extract response content for logging: {e}")
+                            output_text = "[Could not extract response content]"
+                        
+                        # Get user info
+                        user = g.auth_data.get('user')
+                        user_nickname = user.nickname if user and hasattr(user, 'nickname') else "Anonymous"
+                        
+                        # Log the conversation
+                        log_conversation_async(
+                            user_token=g.auth_data['token'],
+                            user_nickname=user_nickname,
+                            model_family='openai',
+                            model_name=model,
+                            input_text=input_text,
+                            output_text=output_text,
+                            input_tokens=tokens.get('prompt_tokens', 0),
+                            output_tokens=tokens.get('completion_tokens', 0),
+                            cost_usd=model_cost or 0.0,
+                            ip_address=g.auth_data.get('ip', ''),
+                            user_agent=request.headers.get('User-Agent')
+                        )
+                except Exception as e:
+                    print(f"Warning: Failed to log conversation: {e}")
             
             if is_streaming:
                 return Response(
@@ -1431,6 +1525,257 @@ def force_gc():
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }), 500
+
+# Conversation Logging API Endpoints
+@app.route('/api/admin/logging/stats', methods=['GET'])
+def get_logging_stats():
+    """Get conversation logging statistics"""
+    try:
+        stats = conversation_logger.get_stats()
+        return jsonify(stats)
+    except Exception as e:
+        print(f"Error getting logging stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/logging/settings', methods=['POST'])
+def update_logging_settings():
+    """Update conversation logging settings"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        success = conversation_logger.update_settings(data)
+        return jsonify({'success': success})
+    except Exception as e:
+        print(f"Error updating logging settings: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/logging/configure', methods=['POST'])
+def configure_logging():
+    """Configure conversation logging backend"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        success = conversation_logger.configure(data)
+        return jsonify({'success': success})
+    except Exception as e:
+        print(f"Error configuring logging: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/logging/config', methods=['GET'])
+def get_logging_config():
+    """Get current logging configuration"""
+    try:
+        # Return basic configuration info (without sensitive data like keys)
+        config = {
+            'enabled': conversation_logger.enabled,
+            'log_input': conversation_logger.log_input,
+            'log_output': conversation_logger.log_output,
+            'last_number_of_chars': conversation_logger.last_number_of_chars,
+            'max_output_length': conversation_logger.max_output_length,
+            'google_sheets': {
+                'spreadsheet_id': conversation_logger.sheets_logger.spreadsheet_id if conversation_logger.sheets_logger else None,
+                'configured': bool(conversation_logger.sheets_logger)
+            }
+        }
+        return jsonify(config)
+    except Exception as e:
+        print(f"Error getting logging config: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/logging/debug', methods=['GET'])
+def debug_logging_config():
+    """Debug endpoint to check Firebase configuration storage"""
+    try:
+        if not conversation_logger.firebase_db:
+            return jsonify({'error': 'Firebase not available'}), 500
+        
+        # Read the raw data from Firebase
+        config_ref = conversation_logger.firebase_db.child(conversation_logger.config_key)
+        raw_config = config_ref.get()
+        
+        debug_info = {
+            'firebase_connected': bool(conversation_logger.firebase_db),
+            'config_key': conversation_logger.config_key,
+            'raw_config_exists': bool(raw_config),
+            'raw_config_keys': list(raw_config.keys()) if raw_config else [],
+            'logger_enabled': conversation_logger.enabled,
+            'sheets_logger_exists': bool(conversation_logger.sheets_logger),
+            'sheets_connected': conversation_logger.stats.get('sheets_connected', False)
+        }
+        
+        # Include Google Sheets debug info if available
+        if raw_config and 'google_sheets' in raw_config:
+            sheets_config = raw_config['google_sheets']
+            debug_info['google_sheets_debug'] = {
+                'has_spreadsheet_id': bool(sheets_config.get('spreadsheet_id')),
+                'spreadsheet_id_length': len(sheets_config.get('spreadsheet_id', '')) if sheets_config.get('spreadsheet_id') else 0,
+                'has_service_account_key_b64': bool(sheets_config.get('service_account_key_b64')),
+                'service_account_key_b64_length': len(sheets_config.get('service_account_key_b64', '')) if sheets_config.get('service_account_key_b64') else 0,
+                'has_plain_service_account_key': bool(sheets_config.get('service_account_key')),
+                'connected_status': sheets_config.get('connected', False)
+            }
+        
+        return jsonify(debug_info)
+    except Exception as e:
+        print(f"Error in debug endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/logging/test-sheets', methods=['POST'])
+def test_google_sheets_connection():
+    """Test Google Sheets connection with provided credentials"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        spreadsheet_id = data.get('spreadsheet_id')
+        service_account_key = data.get('service_account_key')
+        
+        if not spreadsheet_id or not service_account_key:
+            return jsonify({'success': False, 'error': 'Missing spreadsheet_id or service_account_key'}), 400
+        
+        # Import required modules for testing
+        try:
+            import gspread
+            from google.oauth2.service_account import Credentials
+            print("📊 Google Sheets modules imported successfully")
+        except ImportError as e:
+            return jsonify({'success': False, 'error': f'Missing dependencies: {e}'}), 400
+        
+        # Test the connection
+        try:
+            # Parse service account JSON
+            import json
+            creds_dict = json.loads(service_account_key)
+            print("📊 Service account JSON parsed successfully")
+            
+            # Set up credentials
+            scopes = [
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+            credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            print("📊 Credentials created successfully")
+            
+            # Initialize client
+            client = gspread.authorize(credentials)
+            print("📊 Client authorized successfully")
+            
+            # Try to access the spreadsheet
+            spreadsheet = client.open_by_key(spreadsheet_id)
+            print(f"📊 Successfully accessed spreadsheet: '{spreadsheet.title}'")
+            
+            # Try to list worksheets
+            worksheets = spreadsheet.worksheets()
+            worksheet_names = [ws.title for ws in worksheets]
+            print(f"📊 Found {len(worksheets)} worksheets: {worksheet_names}")
+            
+            return jsonify({
+                'success': True,
+                'spreadsheet_title': spreadsheet.title,
+                'worksheet_count': len(worksheets),
+                'worksheet_names': worksheet_names,
+                'service_account_email': creds_dict.get('client_email', 'Unknown')
+            })
+            
+        except json.JSONDecodeError as e:
+            return jsonify({'success': False, 'error': f'Invalid JSON in service account key: {e}'}), 400
+        except gspread.SpreadsheetNotFound:
+            return jsonify({
+                'success': False, 
+                'error': 'Spreadsheet not found or service account does not have access. Make sure: 1) Spreadsheet ID is correct, 2) Service account email has been shared with the spreadsheet'
+            }), 400
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Connection failed: {type(e).__name__}: {e}'}), 400
+            
+    except Exception as e:
+        print(f"Error testing Google Sheets connection: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/logging/check-deps', methods=['GET'])
+def check_logging_dependencies():
+    """Check if logging dependencies are installed"""
+    try:
+        deps_status = {}
+        
+        # Check Firebase
+        try:
+            import firebase_admin
+            from firebase_admin import db
+            deps_status['firebase'] = {
+                'available': True,
+                'version': getattr(firebase_admin, '__version__', 'Unknown')
+            }
+        except ImportError as e:
+            deps_status['firebase'] = {
+                'available': False,
+                'error': str(e)
+            }
+        
+        # Check Google Sheets
+        try:
+            import gspread
+            from google.oauth2.service_account import Credentials
+            deps_status['google_sheets'] = {
+                'available': True,
+                'gspread_version': getattr(gspread, '__version__', 'Unknown'),
+                'google_auth_available': True
+            }
+        except ImportError as e:
+            deps_status['google_sheets'] = {
+                'available': False,
+                'error': str(e)
+            }
+        
+        # Check conversation logger status
+        deps_status['conversation_logger'] = {
+            'firebase_connected': bool(conversation_logger.firebase_db),
+            'sheets_logger_exists': bool(conversation_logger.sheets_logger),
+            'sheets_connected': conversation_logger.stats.get('sheets_connected', False)
+        }
+        
+        return jsonify(deps_status)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/logging/save-config', methods=['POST'])
+def force_save_logging_config():
+    """Force save current logging configuration to Firebase"""
+    try:
+        success = conversation_logger._save_config_to_firebase()
+        return jsonify({'success': success})
+    except Exception as e:
+        print(f"Error force saving logging config: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Helper function for async conversation logging
+def log_conversation_async(user_token, user_nickname, model_family, model_name, 
+                          input_text, output_text, input_tokens, output_tokens, 
+                          cost_usd, ip_address, user_agent=None):
+    """Async wrapper for conversation logging"""
+    try:
+        conversation_logger.log_conversation(
+            user_token=user_token,
+            user_nickname=user_nickname,
+            model_family=model_family,
+            model_name=model_name,
+            input_text=input_text,
+            output_text=output_text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+    except Exception as e:
+        print(f"Error logging conversation: {e}")
 
 # Old admin dashboard route removed - now handled by admin_web_bp
 
@@ -1678,6 +2023,14 @@ def anthropic_messages():
                     if attempt < max_retries - 1:
                         time.sleep(1)  # Brief pause before retry
                         continue
+                else:
+                    # Error is not retryable, return it immediately
+                    metrics.track_request('chat_completions', time.time() - start_time, error=True)
+                    try:
+                        error_data = json.loads(error_text)
+                        return jsonify(error_data), response.status_code
+                    except:
+                        return jsonify({"error": {"message": error_text, "type": "anthropic_api_error"}}), response.status_code
             else:
                 # Success - update key health
                 key_manager.update_key_health(api_key, True)
@@ -1793,6 +2146,118 @@ def anthropic_messages():
                     output_tokens=tokens.get('completion_tokens', 0),
                     ip_hash=g.auth_data.get('ip', '')
                 )
+                
+                # Log structured completion event with model details
+                structured_logger.log_chat_completion(
+                    user_token=g.auth_data['token'],
+                    model_family='anthropic',
+                    model_name=model,
+                    input_tokens=tokens.get('prompt_tokens', 0),
+                    output_tokens=tokens.get('completion_tokens', 0),
+                    cost_usd=model_cost or 0.0,
+                    response_time_ms=response_time * 1000,
+                    success=response.status_code == 200,
+                    ip_hash=g.auth_data.get('ip', ''),
+                    user_agent=request.headers.get('User-Agent')
+                )
+                
+                # Log conversation if enabled
+                try:
+                    if conversation_logger.enabled and response.status_code == 200:
+                        # Extract input text from request
+                        input_text = ""
+                        if request_json.get('messages'):
+                            # Convert messages to readable format
+                            messages = request_json['messages']
+                            input_parts = []
+                            for msg in messages:
+                                role = msg.get('role', 'unknown')
+                                content = msg.get('content', '')
+                                if isinstance(content, list):
+                                    # Handle Anthropic's content array format
+                                    content_parts = []
+                                    for part in content:
+                                        if isinstance(part, dict) and part.get('type') == 'text':
+                                            content_parts.append(part.get('text', ''))
+                                    content = ' '.join(content_parts)
+                                input_parts.append(f"{role}: {content}")
+                            input_text = "\n".join(input_parts)
+                        elif request_json.get('system'):
+                            input_text = f"system: {request_json['system']}"
+                        
+                        # Extract output text from response  
+                        output_text = ""
+                        try:
+                            # Handle bytes response
+                            if isinstance(response_content, bytes):
+                                response_content = response_content.decode('utf-8')
+                            
+                            # Check if this is an SSE (Server-Sent Events) streaming response
+                            if response_content and response_content.startswith('event:'):
+                                # Parse SSE format to extract text content
+                                lines = response_content.split('\n')
+                                accumulated_text = ""
+                                
+                                for line in lines:
+                                    if line.startswith('data: '):
+                                        try:
+                                            data_json = json.loads(line[6:])  # Remove 'data: ' prefix
+                                            
+                                            # Handle content_block_delta events (where the actual text is)
+                                            if data_json.get('type') == 'content_block_delta':
+                                                if 'delta' in data_json and 'text' in data_json['delta']:
+                                                    accumulated_text += data_json['delta']['text']
+                                            
+                                            # Handle message_start events (for initial content)
+                                            elif data_json.get('type') == 'message_start':
+                                                message = data_json.get('message', {})
+                                                if 'content' in message and message['content']:
+                                                    for content_block in message['content']:
+                                                        if content_block.get('type') == 'text':
+                                                            accumulated_text += content_block.get('text', '')
+                                        except json.JSONDecodeError:
+                                            continue  # Skip malformed data lines
+                                
+                                output_text = accumulated_text
+                            
+                            # Handle regular JSON response (non-streaming)
+                            else:
+                                response_data = json.loads(response_content) if response_content else {}
+                                
+                                if 'content' in response_data and response_data['content']:
+                                    content = response_data['content']
+                                    if isinstance(content, list) and content:
+                                        for part in content:
+                                            if isinstance(part, dict) and part.get('type') == 'text':
+                                                output_text = part.get('text', '')
+                                                break
+                                    elif isinstance(content, str):
+                                        output_text = content
+                        
+                        except Exception as e:
+                            print(f"Error extracting response content for logging: {e}")
+                            output_text = "[Could not extract response content]"
+                        
+                        # Get user info
+                        user = g.auth_data.get('user')
+                        user_nickname = user.nickname if user and hasattr(user, 'nickname') else "Anonymous"
+                        
+                        # Log the conversation
+                        log_conversation_async(
+                            user_token=g.auth_data['token'],
+                            user_nickname=user_nickname,
+                            model_family='anthropic',
+                            model_name=model,
+                            input_text=input_text,
+                            output_text=output_text,
+                            input_tokens=tokens.get('prompt_tokens', 0),
+                            output_tokens=tokens.get('completion_tokens', 0),
+                            cost_usd=model_cost or 0.0,
+                            ip_address=g.auth_data.get('ip', ''),
+                            user_agent=request.headers.get('User-Agent')
+                        )
+                except Exception as e:
+                    print(f"Warning: Failed to log conversation: {e}")
             
             if is_streaming:
                 return Response(
