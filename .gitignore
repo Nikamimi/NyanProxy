@@ -149,6 +149,7 @@ server_control.py
 server_control.bat
 server_config.txt
 digitalocean.md
+kill-port-7860.bat
 
 # Screenshots and images
 *.png

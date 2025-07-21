@@ -506,13 +506,20 @@ class ModelFamilyManager:
                 whitelisted = self.whitelisted_models.get(provider, set())
                 is_whitelisted = model_id in whitelisted
                 
+                # Debug logging
+                print(f"🔍 WHITELIST CHECK: {provider.value} model '{model_id}'")
+                print(f"🔍 WHITELIST CHECK: Whitelisted models for {provider.value}: {sorted(whitelisted)}")
+                print(f"🔍 WHITELIST CHECK: Direct match: {is_whitelisted}")
+                
                 if not is_whitelisted:
                     # Check if any whitelisted model has this as its actual model_id
                     for whitelisted_id in whitelisted:
                         stored_model = self.models.get(whitelisted_id)
                         if stored_model and stored_model.model_id == model_id:
+                            print(f"🔍 WHITELIST CHECK: Found match via stored model {whitelisted_id} -> {model_id}")
                             return True
                 
+                print(f"🔍 WHITELIST CHECK: Final result: {is_whitelisted}")
                 return is_whitelisted
             except Exception as e:
                 import logging
