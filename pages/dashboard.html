@@ -1393,6 +1393,73 @@
             }
         }
         
+        // Load enhanced system metrics
+        async function loadSystemMetrics() {
+            try {
+                const response = await fetch('/api/system/health', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const health = await response.json();
+                    const systemStats = health.metrics.system_stats;
+                    const threadStats = health.metrics.thread_stats;
+                    
+                    // Update memory metric
+                    const memoryElement = document.getElementById('memoryValue');
+                    const memoryMetric = document.getElementById('memoryMetric');
+                    const memoryMB = systemStats.memory_mb;
+                    memoryElement.textContent = `${memoryMB} MB`;
+                    
+                    // Change color based on memory usage
+                    memoryMetric.className = 'metric';
+                    if (memoryMB > 400) {
+                        memoryMetric.classList.add('status-error');
+                    } else if (memoryMB > 250) {
+                        memoryMetric.classList.add('status-warning');
+                    } else {
+                        memoryMetric.classList.add('status-good');
+                    }
+                    
+                    // Update thread metric
+                    const threadElement = document.getElementById('threadValue');
+                    const threadMetric = document.getElementById('threadMetric');
+                    const threadCount = systemStats.thread_count;
+                    threadElement.textContent = threadCount.toString();
+                    
+                    // Change color based on thread count
+                    threadMetric.className = 'metric';
+                    if (threadCount > 50) {
+                        threadMetric.classList.add('status-error');
+                    } else if (threadCount > 30) {
+                        threadMetric.classList.add('status-warning');
+                    } else {
+                        threadMetric.classList.add('status-good');
+                    }
+                    
+                    // Log recommendations if any
+                    if (health.recommendations && health.recommendations.length > 0) {
+                        console.log('🚨 System recommendations:', health.recommendations);
+                    }
+                    
+                    console.log('📊 System stats loaded:', systemStats);
+                } else {
+                    console.error('Failed to load system metrics:', response.status);
+                    // Show fallback values
+                    document.getElementById('memoryValue').textContent = 'N/A';
+                    document.getElementById('threadValue').textContent = 'N/A';
+                }
+            } catch (error) {
+                console.error('Error loading system metrics:', error);
+                // Show fallback values
+                document.getElementById('memoryValue').textContent = 'N/A';
+                document.getElementById('threadValue').textContent = 'N/A';
+            }
+        }
+        
         // Session Management Functions
         async function loadExistingSession() {
             try {

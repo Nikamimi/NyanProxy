@@ -6,6 +6,7 @@ import sys
 import os
 import signal
 import atexit
+import time
 
 # Add the project root to Python path so imports work correctly
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -13,11 +14,57 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def shutdown_handler(signum=None, frame=None):
     """Gracefully handle shutdown"""
     print("🐱 Shutting down NyanProxy...")
+    shutdown_start = time.time()
+    
     try:
+        # Import core components for shutdown
+        from core.app import thread_manager, connection_pool, metrics
+        
+        print("🧵 Shutting down thread manager...")
+        thread_manager.shutdown_all()
+        
+        print("🔗 Closing connection pools...")
+        connection_pool.close_all_sessions()
+        
+        print("📊 Final garbage collection...")
+        metrics.force_garbage_collection()
+        
+        print("🔥 Shutting down model manager...")
         from src.services.model_families import model_manager
         model_manager.shutdown()
+        
+        # Record clean shutdown
+        try:
+            from src.services.firebase_logger import structured_logger
+            structured_logger.log_system_event(
+                event_type='shutdown',
+                details={
+                    'shutdown_duration': time.time() - shutdown_start,
+                    'process_id': os.getpid(),
+                    'clean_shutdown': True
+                }
+            )
+        except Exception:
+            pass  # Don't fail shutdown on logging error
+            
+        print(f"✅ Clean shutdown completed in {time.time() - shutdown_start:.2f}s")
+        
     except Exception as e:
-        print(f"Error during shutdown: {e}")
+        print(f"⚠️ Error during shutdown: {e}")
+        # Still attempt to record the shutdown attempt
+        try:
+            from src.services.firebase_logger import structured_logger
+            structured_logger.log_system_event(
+                event_type='shutdown',
+                details={
+                    'shutdown_duration': time.time() - shutdown_start,
+                    'process_id': os.getpid(),
+                    'clean_shutdown': False,
+                    'error': str(e)
+                }
+            )
+        except Exception:
+            pass
     
     if signum is not None:
         sys.exit(0)

@@ -6,9 +6,13 @@ import random
 import time
 import threading
 import hashlib
+import psutil
+import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List
 from datetime import datetime, timedelta
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from .health_checker import health_manager, HealthResult
 
 # Import tokenizer libraries
@@ -45,9 +49,166 @@ from src.routes.model_families_admin import model_families_bp
 from src.middleware.auth import generate_csrf_token
 from src.services.model_families import model_manager, AIProvider
 
+class ThreadManager:
+    """Manages background threads and prevents resource leaks"""
+    def __init__(self):
+        self.active_threads = {}  # thread_id -> thread info
+        self.executor_pools = {}  # pool_name -> ThreadPoolExecutor
+        self.lock = threading.Lock()
+        self.shutdown_event = threading.Event()
+        
+    def create_thread_pool(self, pool_name: str, max_workers: int = 10):
+        """Create a reusable thread pool"""
+        with self.lock:
+            if pool_name in self.executor_pools:
+                return self.executor_pools[pool_name]
+            
+            pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f"{pool_name}_")
+            self.executor_pools[pool_name] = pool
+            print(f"🧵 Created thread pool '{pool_name}' with {max_workers} workers")
+            return pool
+    
+    def submit_task(self, pool_name: str, func, *args, **kwargs):
+        """Submit a task to a managed thread pool"""
+        pool = self.create_thread_pool(pool_name)
+        future = pool.submit(func, *args, **kwargs)
+        return future
+    
+    def create_daemon_thread(self, target, name: str = None, args: tuple = ()):
+        """Create a managed daemon thread with cleanup tracking"""
+        thread_id = f"{name}_{int(time.time())}_{random.randint(1000, 9999)}"
+        
+        def wrapped_target(*args):
+            try:
+                target(*args)
+            except Exception as e:
+                print(f"⚠️ Thread {thread_id} error: {e}")
+            finally:
+                with self.lock:
+                    if thread_id in self.active_threads:
+                        del self.active_threads[thread_id]
+                        print(f"🧹 Cleaned up thread {thread_id}")
+        
+        thread = threading.Thread(
+            target=wrapped_target,
+            name=name or thread_id,
+            args=args,
+            daemon=True
+        )
+        
+        with self.lock:
+            self.active_threads[thread_id] = {
+                'thread': thread,
+                'created_at': time.time(),
+                'name': name or thread_id
+            }
+        
+        thread.start()
+        print(f"🚀 Started managed thread: {thread_id}")
+        return thread_id
+    
+    def cleanup_dead_threads(self):
+        """Remove references to dead threads"""
+        with self.lock:
+            dead_threads = []
+            for thread_id, info in self.active_threads.items():
+                if not info['thread'].is_alive():
+                    dead_threads.append(thread_id)
+            
+            for thread_id in dead_threads:
+                del self.active_threads[thread_id]
+                
+            if dead_threads:
+                print(f"🧹 Cleaned up {len(dead_threads)} dead threads")
+    
+    def get_thread_stats(self):
+        """Get current thread statistics"""
+        with self.lock:
+            active_count = sum(1 for info in self.active_threads.values() 
+                             if info['thread'].is_alive())
+            
+            return {
+                'active_managed_threads': active_count,
+                'total_managed_threads': len(self.active_threads),
+                'thread_pools': list(self.executor_pools.keys()),
+                'oldest_thread_age': time.time() - min(
+                    (info['created_at'] for info in self.active_threads.values()),
+                    default=time.time()
+                )
+            }
+    
+    def shutdown_all(self):
+        """Gracefully shutdown all managed threads and pools"""
+        print("🛑 Shutting down thread manager...")
+        self.shutdown_event.set()
+        
+        # Shutdown thread pools
+        for pool_name, pool in self.executor_pools.items():
+            print(f"🛑 Shutting down pool: {pool_name}")
+            pool.shutdown(wait=True, cancel_futures=True)
+        
+        print("✅ Thread manager shutdown complete")
+
+# Global thread manager instance
+thread_manager = ThreadManager()
+
+class ConnectionPoolManager:
+    """Manages HTTP connection pools for better performance under load"""
+    def __init__(self):
+        self.sessions = {}
+        self.lock = threading.Lock()
+        
+    def get_session(self, service: str):
+        """Get a session with connection pooling for a specific service"""
+        with self.lock:
+            if service not in self.sessions:
+                session = requests.Session()
+                
+                # Configure retry strategy
+                retry_strategy = Retry(
+                    total=3,
+                    backoff_factor=1,
+                    status_forcelist=[429, 500, 502, 503, 504],
+                    method_whitelist=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"]
+                )
+                
+                # Configure connection pooling
+                adapter = HTTPAdapter(
+                    pool_connections=20,  # Number of connection pools to cache
+                    pool_maxsize=20,      # Maximum number of connections per pool
+                    max_retries=retry_strategy,
+                    pool_block=False
+                )
+                
+                session.mount("http://", adapter)
+                session.mount("https://", adapter)
+                
+                # Set timeouts
+                session.timeout = (10, 30)  # (connect, read) timeout
+                
+                self.sessions[service] = session
+                print(f"🔗 Created connection pool for {service}")
+                
+            return self.sessions[service]
+    
+    def close_all_sessions(self):
+        """Close all session connection pools"""
+        with self.lock:
+            for service, session in self.sessions.items():
+                try:
+                    session.close()
+                    print(f"🔗 Closed connection pool for {service}")
+                except Exception as e:
+                    print(f"⚠️ Error closing session for {service}: {e}")
+            self.sessions.clear()
+
+# Global connection pool manager
+connection_pool = ConnectionPoolManager()
+
 class MetricsTracker:
     def __init__(self):
         self.start_time = time.time()
+        self.process = psutil.Process()  # Current process for monitoring
         self.request_counts = {
             'chat_completions': 0,
             'models': 0,
@@ -70,6 +231,11 @@ class MetricsTracker:
         self.service_tokens = {}
         # IP tracking for active prompters
         self.active_ips = []  # List of (ip, timestamp) tuples
+        # System monitoring
+        self.peak_memory_mb = 0
+        self.restart_count = 0
+        self.thread_count_history = []
+        self.gc_stats = {'collections': 0, 'collected': 0, 'uncollectable': 0}
         self.lock = threading.Lock()
     
     def track_request(self, endpoint: str, response_time: float = None, error: bool = False, tokens: dict = None, service: str = None):
@@ -127,6 +293,10 @@ class MetricsTracker:
                 
                 # Track total tokens (input + output)
                 self.service_tokens[service]['total_tokens'] += total_tokens
+            
+            # Periodic memory check (every 50 requests)
+            if self.total_requests % 50 == 0:
+                self.check_memory_threshold()
     
     def track_ip(self, ip: str):
         """Track IP address for current prompter counting"""
@@ -157,8 +327,86 @@ class MetricsTracker:
             return 0
         return sum(self.response_times) / len(self.response_times)
     
+    def get_system_stats(self):
+        """Get current system statistics"""
+        try:
+            memory_info = self.process.memory_info()
+            memory_mb = memory_info.rss / (1024 * 1024)  # Convert to MB
+            
+            # Update peak memory
+            if memory_mb > self.peak_memory_mb:
+                self.peak_memory_mb = memory_mb
+            
+            # Get thread count
+            thread_count = self.process.num_threads()
+            self.thread_count_history.append(thread_count)
+            
+            # Keep only last 100 thread counts
+            if len(self.thread_count_history) > 100:
+                self.thread_count_history.pop(0)
+            
+            # Get CPU usage (non-blocking)
+            cpu_percent = self.process.cpu_percent(interval=None)
+            
+            # Get garbage collection stats
+            gc_stats = gc.get_stats()
+            if gc_stats:
+                self.gc_stats['collections'] = sum(stat.get('collections', 0) for stat in gc_stats)
+                self.gc_stats['collected'] = sum(stat.get('collected', 0) for stat in gc_stats)
+                self.gc_stats['uncollectable'] = sum(stat.get('uncollectable', 0) for stat in gc_stats)
+            
+            return {
+                'memory_mb': round(memory_mb, 2),
+                'peak_memory_mb': round(self.peak_memory_mb, 2),
+                'cpu_percent': round(cpu_percent, 1),
+                'thread_count': thread_count,
+                'avg_thread_count': round(sum(self.thread_count_history) / len(self.thread_count_history), 1) if self.thread_count_history else 0,
+                'gc_stats': self.gc_stats.copy(),
+                'open_file_descriptors': len(self.process.open_files()) if hasattr(self.process, 'open_files') else 0
+            }
+        except Exception as e:
+            print(f"⚠️ Error getting system stats: {e}")
+            return {
+                'memory_mb': 0,
+                'peak_memory_mb': 0,
+                'cpu_percent': 0,
+                'thread_count': 0,
+                'avg_thread_count': 0,
+                'gc_stats': {'collections': 0, 'collected': 0, 'uncollectable': 0},
+                'open_file_descriptors': 0
+            }
+    
+    def force_garbage_collection(self):
+        """Force garbage collection and return collected objects count"""
+        try:
+            collected = gc.collect()
+            print(f"🧹 Garbage collection: {collected} objects collected")
+            return collected
+        except Exception as e:
+            print(f"⚠️ Error during garbage collection: {e}")
+            return 0
+    
+    def check_memory_threshold(self, threshold_mb=500):
+        """Check if memory usage exceeds threshold and force GC if needed"""
+        try:
+            current_memory = self.process.memory_info().rss / (1024 * 1024)
+            if current_memory > threshold_mb:
+                print(f"🚨 Memory usage high: {current_memory:.2f}MB, forcing garbage collection")
+                collected = self.force_garbage_collection()
+                return True, collected
+            return False, 0
+        except Exception as e:
+            print(f"⚠️ Error checking memory threshold: {e}")
+            return False, 0
+    
     def get_metrics(self):
         with self.lock:
+            system_stats = self.get_system_stats()
+            thread_stats = thread_manager.get_thread_stats()
+            
+            # Periodic cleanup of dead threads
+            thread_manager.cleanup_dead_threads()
+            
             return {
                 'uptime_seconds': self.get_uptime(),
                 'total_requests': self.total_requests,
@@ -170,7 +418,10 @@ class MetricsTracker:
                 'prompt_tokens': self.prompt_tokens,
                 'completion_tokens': self.completion_tokens,
                 'service_tokens': self.service_tokens.copy(),
-                'current_prompters': self.get_current_prompters()
+                'current_prompters': self.get_current_prompters(),
+                'system_stats': system_stats,
+                'thread_stats': thread_stats,
+                'restart_count': self.restart_count
             }
 
 
@@ -342,41 +593,37 @@ class APIKeyManager:
             print(f"🚀 Starting concurrent health checks for {len(key_service_pairs)} API keys...")
             start_time = time.time()
             
-            # Use ThreadPoolExecutor for concurrent health checks
-            # Optimize concurrency based on service types and total keys
-            max_workers = min(50, len(key_service_pairs))  # Increased for better performance
+            # Use managed thread pool for health checks
+            health_pool = thread_manager.create_thread_pool("health_checks", max_workers=min(30, len(key_service_pairs)))
             
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all health check tasks
-                future_to_key = {
-                    executor.submit(self.perform_proactive_health_check, service, key): (service, key)
-                    for service, key in key_service_pairs
-                }
-                
-                # Process completed tasks
-                completed = 0
-                for future in as_completed(future_to_key):
-                    service, key = future_to_key[future]
-                    try:
-                        future.result()  # Wait for completion
-                        completed += 1
+            # Submit all health check tasks
+            futures = []
+            for service, key in key_service_pairs:
+                future = health_pool.submit(self.perform_proactive_health_check, service, key)
+                futures.append((future, service, key))
+            
+            # Process completed tasks
+            completed = 0
+            for future, service, key in futures:
+                try:
+                    future.result(timeout=30)  # Add timeout
+                    completed += 1
+                    
+                    # Log progress every 20 completions or when significant milestones reached
+                    if completed % 20 == 0 or completed in [10, 25, 50, 100]:
+                        elapsed_partial = time.time() - start_time
+                        rate = completed / elapsed_partial if elapsed_partial > 0 else 0
+                        print(f"✅ Health checks: {completed}/{len(key_service_pairs)} ({rate:.1f}/sec)")
                         
-                        # Log progress every 20 completions or when significant milestones reached
-                        if completed % 20 == 0 or completed in [10, 25, 50, 100]:
-                            elapsed_partial = time.time() - start_time
-                            rate = completed / elapsed_partial if elapsed_partial > 0 else 0
-                            print(f"✅ Health checks: {completed}/{len(key_service_pairs)} ({rate:.1f}/sec)")
-                            
-                    except Exception as e:
-                        print(f"⚠️ Health check failed for {service} key {key[:8]}...: {e}")
-                        completed += 1
+                except Exception as e:
+                    print(f"⚠️ Health check failed for {service} key {key[:8]}...: {e}")
+                    completed += 1
             
             elapsed = time.time() - start_time
             print(f"🎉 All health checks completed in {elapsed:.2f}s ({len(key_service_pairs)/elapsed:.1f} keys/sec)")
         
-        # Run in background thread
-        thread = threading.Thread(target=check_all_keys, daemon=True)
-        thread.start()
+        # Use managed daemon thread
+        thread_manager.create_daemon_thread(check_all_keys, "health_check_runner")
     
     def _classify_error(self, status_code: int, error_message: str) -> tuple:
         """Classify error type and return (error_type, is_retryable)"""
@@ -515,6 +762,47 @@ class APIKeyManager:
 key_manager = APIKeyManager()
 metrics = MetricsTracker()
 app = Flask(__name__, template_folder='../pages', static_folder='../static')
+
+# Startup logging and restart detection
+startup_time = datetime.now()
+print(f"🐱 NyanProxy starting up at {startup_time.isoformat()}")
+print(f"🔧 Process ID: {os.getpid()}")
+print(f"🧵 Main thread ID: {threading.current_thread().ident}")
+
+# Check for previous crash/restart indicators
+restart_file = os.path.join(os.path.dirname(__file__), '..', '.restart_count')
+try:
+    if os.path.exists(restart_file):
+        with open(restart_file, 'r') as f:
+            restart_count = int(f.read().strip()) + 1
+            metrics.restart_count = restart_count
+        print(f"🔄 Detected restart #{restart_count}")
+    else:
+        restart_count = 1
+        metrics.restart_count = restart_count
+        print("✨ First startup detected")
+    
+    # Update restart count file
+    with open(restart_file, 'w') as f:
+        f.write(str(restart_count))
+    
+    # Log startup event to structured logger if available
+    try:
+        structured_logger.log_system_event(
+            event_type='startup',
+            details={
+                'restart_count': restart_count,
+                'startup_time': startup_time.isoformat(),
+                'process_id': os.getpid(),
+                'thread_id': threading.current_thread().ident
+            }
+        )
+    except Exception as e:
+        print(f"⚠️ Could not log startup event: {e}")
+        
+except Exception as e:
+    print(f"⚠️ Error handling restart detection: {e}")
+    metrics.restart_count = 1
 
 # Configure Flask
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default-secret-key-change-in-production')
@@ -663,7 +951,8 @@ def openai_chat_completions():
         }
         
         try:
-            response = requests.post(
+            session = connection_pool.get_session('openai')
+            response = session.post(
                 'https://api.openai.com/v1/chat/completions',
                 headers=headers,
                 json=request.json,
@@ -1080,6 +1369,67 @@ def get_metrics():
     """Get proxy metrics"""
     return jsonify(metrics.get_metrics())
 
+@app.route('/api/system/health', methods=['GET'])
+def system_health():
+    """Comprehensive system health endpoint"""
+    try:
+        health_data = {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'uptime_seconds': metrics.get_uptime(),
+            'metrics': metrics.get_metrics(),
+            'memory_warning': False,
+            'thread_warning': False,
+            'recommendations': []
+        }
+        
+        system_stats = health_data['metrics']['system_stats']
+        thread_stats = health_data['metrics']['thread_stats']
+        
+        # Check for warnings
+        if system_stats['memory_mb'] > 400:
+            health_data['memory_warning'] = True
+            health_data['recommendations'].append('Consider reducing memory usage or restarting')
+            
+        if system_stats['thread_count'] > 50:
+            health_data['thread_warning'] = True
+            health_data['recommendations'].append('High thread count detected - monitor for thread leaks')
+        
+        # Check for restarts
+        if health_data['metrics']['restart_count'] > 5:
+            health_data['recommendations'].append('Frequent restarts detected - investigate stability issues')
+        
+        # Force garbage collection if needed
+        memory_check, collected = metrics.check_memory_threshold(400)
+        if memory_check:
+            health_data['recommendations'].append(f'Forced garbage collection - {collected} objects collected')
+        
+        return jsonify(health_data)
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'timestamp': datetime.now().isoformat(),
+            'error': str(e)
+        }), 500
+
+@app.route('/api/system/gc', methods=['POST'])
+def force_gc():
+    """Force garbage collection endpoint"""
+    try:
+        collected = metrics.force_garbage_collection()
+        return jsonify({
+            'success': True,
+            'objects_collected': collected,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 # Old admin dashboard route removed - now handled by admin_web_bp
 
 @app.route('/', methods=['GET'])
@@ -1308,7 +1658,8 @@ def anthropic_messages():
         }
         
         try:
-            response = requests.post(
+            session = connection_pool.get_session('anthropic')
+            response = session.post(
                 'https://api.anthropic.com/v1/messages',
                 headers=headers,
                 json=request.json,
@@ -1551,7 +1902,8 @@ def google_gemini_proxy(model_path):
                     streaming_url += f'?key={selected_key}&alt=sse'
                 
                 
-                response = requests.post(
+                session = connection_pool.get_session('google')
+                response = session.post(
                     streaming_url,
                     json=google_request_body,
                     headers={
@@ -1570,7 +1922,8 @@ def google_gemini_proxy(model_path):
                     regular_url += f'?key={selected_key}'
                 
                 
-                response = requests.post(
+                session = connection_pool.get_session('google')
+                response = session.post(
                     regular_url,
                     json=google_request_body,
                     headers={
@@ -1610,11 +1963,9 @@ def google_gemini_proxy(model_path):
                             yield f"data: {{'error': 'Stream interrupted: {str(e)}'}}\n\n"
                     
                     # Start background token counting after response setup
-                    import threading
                     def background_token_counting():
                         try:
                             # Wait a moment for streaming to complete
-                            import time
                             time.sleep(1)
                             
                             input_tokens = 0
@@ -1680,10 +2031,11 @@ def google_gemini_proxy(model_path):
                         # Store client IP for background tracking
                         auth_data_copy['ip'] = get_client_ip()
                     
-                    # Start background thread
-                    token_thread = threading.Thread(target=background_token_counting)
-                    token_thread.daemon = True
-                    token_thread.start()
+                    # Start managed background thread
+                    thread_manager.create_daemon_thread(
+                        background_token_counting, 
+                        f"token_counter_google_{model_name}"
+                    )
                     
                     # Update key health for successful streaming
                     key_manager.update_key_health(selected_key, True)

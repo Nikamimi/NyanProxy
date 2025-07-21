@@ -58,6 +58,51 @@
         </div>
     </div>
 
+    <!-- System Health Section -->
+    <div class="config-section">
+        <h2>🔧 System Health & Performance</h2>
+        <div class="system-health-grid">
+            <div class="health-box" id="uptimeBox">
+                <div class="health-label">Server Uptime</div>
+                <div class="health-value" id="uptimeValue">Loading...</div>
+            </div>
+            <div class="health-box" id="memoryBox">
+                <div class="health-label">Memory Usage</div>
+                <div class="health-value" id="memoryValue">Loading...</div>
+            </div>
+            <div class="health-box" id="threadBox">
+                <div class="health-label">Thread Count</div>
+                <div class="health-value" id="threadValue">Loading...</div>
+            </div>
+            <div class="health-box" id="cpuBox">
+                <div class="health-label">CPU Usage</div>
+                <div class="health-value" id="cpuValue">Loading...</div>
+            </div>
+            <div class="health-box" id="restartsBox">
+                <div class="health-label">Restarts</div>
+                <div class="health-value" id="restartsValue">Loading...</div>
+            </div>
+            <div class="health-box" id="responseBox">
+                <div class="health-label">Avg Response</div>
+                <div class="health-value" id="responseValue">Loading...</div>
+            </div>
+        </div>
+        
+        <!-- System Actions -->
+        <div class="system-actions">
+            <button class="action-btn secondary" onclick="refreshSystemHealth()">🔄 Refresh</button>
+            <button class="action-btn warning" onclick="forceGarbageCollection()">🧹 Force GC</button>
+            <button class="action-btn secondary" onclick="viewSystemLogs()">📋 View Logs</button>
+            <button class="action-btn secondary" onclick="testHealthEndpoint()" style="font-size: 0.8em;">🔍 Test API</button>
+        </div>
+        
+        <!-- System Recommendations -->
+        <div id="systemRecommendations" class="recommendations" style="display: none;">
+            <h4>⚠️ System Recommendations:</h4>
+            <ul id="recommendationsList"></ul>
+        </div>
+    </div>
+
     <!-- Action Buttons -->
     <div class="action-section">
         <button class="action-btn primary" onclick="window.location.href='{{ url_for('admin.create_user') }}'">Create User</button>
@@ -400,6 +445,83 @@
         background-color: #f8f9fa;
     }
 
+    /* System Health Styles */
+    .system-health-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .health-box {
+        text-align: center;
+        padding: 15px;
+        background: #fff;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        transition: all 0.3s ease;
+    }
+
+    .health-box.status-good {
+        border-left: 4px solid #28a745;
+        background: #f8fff9;
+    }
+
+    .health-box.status-warning {
+        border-left: 4px solid #ffc107;
+        background: #fffdf5;
+    }
+
+    .health-box.status-error {
+        border-left: 4px solid #dc3545;
+        background: #fff5f5;
+    }
+
+    .health-label {
+        font-size: 0.85em;
+        color: #6c757d;
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+
+    .health-value {
+        font-size: 1.4em;
+        font-weight: bold;
+        color: #495057;
+    }
+
+    .system-actions {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .recommendations {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 6px;
+        padding: 15px;
+        margin-top: 15px;
+    }
+
+    .recommendations h4 {
+        margin: 0 0 10px 0;
+        color: #856404;
+        font-size: 1em;
+    }
+
+    .recommendations ul {
+        margin: 0;
+        padding-left: 20px;
+        color: #856404;
+    }
+
+    .recommendations li {
+        margin-bottom: 5px;
+    }
+
     /* Responsive Design */
     @media (max-width: 768px) {
         .dashboard-container {
@@ -498,5 +620,249 @@ function deleteUser(token) {
         });
     }
 }
+
+// System Health Functions
+async function loadSystemHealth() {
+    console.log('🔄 Loading system health...');
+    try {
+        const response = await fetch('/api/system/health');
+        console.log('📊 System health response status:', response.status);
+        
+        if (response.ok) {
+            const health = await response.json();
+            console.log('📊 System health data:', health);
+            updateSystemHealthDisplay(health);
+        } else {
+            const errorText = await response.text();
+            console.error('Failed to load system health:', response.status, errorText);
+            showHealthError('HTTP ' + response.status);
+        }
+    } catch (error) {
+        console.error('Error loading system health:', error);
+        showHealthError('Network Error: ' + error.message);
+    }
+}
+
+function updateSystemHealthDisplay(health) {
+    const metrics = health.metrics;
+    const systemStats = metrics.system_stats;
+    const threadStats = metrics.thread_stats;
+
+    // Update uptime
+    const uptimeHours = (metrics.uptime_seconds / 3600).toFixed(1);
+    updateHealthBox('uptimeBox', 'uptimeValue', `${uptimeHours}h`, 'good');
+
+    // Update memory usage
+    const memoryMB = systemStats.memory_mb;
+    const memoryStatus = memoryMB > 400 ? 'error' : (memoryMB > 250 ? 'warning' : 'good');
+    updateHealthBox('memoryBox', 'memoryValue', `${memoryMB} MB`, memoryStatus);
+
+    // Update thread count
+    const threadCount = systemStats.thread_count;
+    const threadStatus = threadCount > 50 ? 'error' : (threadCount > 30 ? 'warning' : 'good');
+    updateHealthBox('threadBox', 'threadValue', threadCount.toString(), threadStatus);
+
+    // Update CPU usage
+    const cpuPercent = systemStats.cpu_percent;
+    const cpuStatus = cpuPercent > 80 ? 'error' : (cpuPercent > 60 ? 'warning' : 'good');
+    updateHealthBox('cpuBox', 'cpuValue', `${cpuPercent}%`, cpuStatus);
+
+    // Update restart count
+    const restarts = metrics.restart_count;
+    const restartStatus = restarts > 5 ? 'warning' : (restarts > 10 ? 'error' : 'good');
+    updateHealthBox('restartsBox', 'restartsValue', restarts.toString(), restartStatus);
+
+    // Update response time
+    const avgResponse = metrics.average_response_time;
+    const responseStatus = avgResponse > 5 ? 'error' : (avgResponse > 2 ? 'warning' : 'good');
+    updateHealthBox('responseBox', 'responseValue', `${avgResponse.toFixed(2)}s`, responseStatus);
+
+    // Show recommendations if any
+    if (health.recommendations && health.recommendations.length > 0) {
+        const recommendationsDiv = document.getElementById('systemRecommendations');
+        const recommendationsList = document.getElementById('recommendationsList');
+        
+        recommendationsList.innerHTML = '';
+        health.recommendations.forEach(rec => {
+            const li = document.createElement('li');
+            li.textContent = rec;
+            recommendationsList.appendChild(li);
+        });
+        
+        recommendationsDiv.style.display = 'block';
+    } else {
+        document.getElementById('systemRecommendations').style.display = 'none';
+    }
+}
+
+function updateHealthBox(boxId, valueId, value, status) {
+    const box = document.getElementById(boxId);
+    const valueElement = document.getElementById(valueId);
+    
+    // Remove existing status classes
+    box.classList.remove('status-good', 'status-warning', 'status-error');
+    
+    // Add new status class
+    if (status) {
+        box.classList.add(`status-${status}`);
+    }
+    
+    // Update value
+    valueElement.textContent = value;
+}
+
+function showHealthError(errorMessage = 'Error') {
+    console.log('❌ Showing health error:', errorMessage);
+    const healthValues = ['uptimeValue', 'memoryValue', 'threadValue', 'cpuValue', 'restartsValue', 'responseValue'];
+    const healthBoxes = ['uptimeBox', 'memoryBox', 'threadBox', 'cpuBox', 'restartsBox', 'responseBox'];
+    
+    healthValues.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = errorMessage.length > 15 ? 'Error' : errorMessage;
+        }
+    });
+    
+    // Mark all boxes as error state
+    healthBoxes.forEach(id => {
+        const box = document.getElementById(id);
+        if (box) {
+            box.classList.remove('status-good', 'status-warning');
+            box.classList.add('status-error');
+        }
+    });
+}
+
+function refreshSystemHealth() {
+    loadSystemHealth();
+}
+
+async function forceGarbageCollection() {
+    try {
+        const response = await fetch('/api/system/gc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            alert(`Garbage collection completed! ${result.objects_collected} objects collected.`);
+            // Refresh health data after GC
+            setTimeout(loadSystemHealth, 1000);
+        } else {
+            const errorText = await response.text();
+            console.error('GC failed:', response.status, errorText);
+            alert('Failed to force garbage collection: HTTP ' + response.status);
+        }
+    } catch (error) {
+        console.error('Error forcing garbage collection:', error);
+        alert('Error forcing garbage collection: ' + error.message);
+    }
+}
+
+function viewSystemLogs() {
+    window.open('/api/system/health', '_blank');
+}
+
+async function testHealthEndpoint() {
+    console.log('🔍 Testing health endpoint...');
+    try {
+        const response = await fetch('/api/system/health');
+        console.log('🔍 Test response:', response);
+        
+        const responseText = await response.text();
+        console.log('🔍 Response text:', responseText);
+        
+        if (response.ok) {
+            try {
+                const data = JSON.parse(responseText);
+                alert('✅ Health endpoint working!\nStatus: ' + response.status + '\nUptime: ' + (data.uptime_seconds/3600).toFixed(1) + 'h');
+                loadSystemHealth(); // Try loading again
+            } catch (e) {
+                alert('⚠️ Health endpoint returns invalid JSON:\n' + responseText.substring(0, 200));
+            }
+        } else {
+            alert('❌ Health endpoint error!\nStatus: ' + response.status + '\nResponse: ' + responseText.substring(0, 200));
+        }
+    } catch (error) {
+        console.error('🔍 Test error:', error);
+        alert('❌ Network error testing health endpoint:\n' + error.message);
+    }
+}
+
+// Initialize system health monitoring after everything is loaded
+function initializeSystemHealth() {
+    if (window.healthMonitoringStarted) {
+        console.log('🔧 Health monitoring already started, skipping...');
+        return;
+    }
+    
+    window.healthMonitoringStarted = true;
+    console.log('🔧 Initializing system health monitoring...');
+    
+    // Load immediately with a delay to ensure everything is ready
+    setTimeout(function() {
+        console.log('🔄 Loading initial system health data...');
+        loadSystemHealth();
+    }, 1500); // Longer delay to ensure admin.js is fully loaded
+    
+    // Set up auto-refresh every 30 seconds
+    setInterval(function() {
+        console.log('🔄 Auto-refreshing system health...');
+        loadSystemHealth();
+    }, 30000);
+}
+
+// Check if jQuery is available, if not use vanilla JS
+function initHealthMonitoringWhenReady() {
+    if (typeof $ !== 'undefined' && $.fn) {
+        console.log('✅ jQuery is available, using jQuery initialization');
+        $(document).ready(function() {
+            console.log('📄 Dashboard DOM ready with jQuery, waiting for complete page load...');
+            
+            $(window).on('load', function() {
+                console.log('📄 Page fully loaded, initializing health monitoring...');
+                setTimeout(initializeSystemHealth, 500);
+            });
+            
+            // Fallback timeout
+            setTimeout(function() {
+                console.log('📄 jQuery fallback initialization of health monitoring...');
+                if (!window.healthMonitoringStarted) {
+                    initializeSystemHealth();
+                }
+            }, 3000);
+        });
+    } else {
+        console.log('⚠️ jQuery not available, using vanilla JS initialization');
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('📄 DOM ready (vanilla JS), waiting for window load...');
+                window.addEventListener('load', function() {
+                    console.log('📄 Window loaded (vanilla JS), initializing health monitoring...');
+                    setTimeout(initializeSystemHealth, 500);
+                });
+                
+                // Fallback timeout
+                setTimeout(function() {
+                    console.log('📄 Vanilla JS fallback initialization of health monitoring...');
+                    if (!window.healthMonitoringStarted) {
+                        initializeSystemHealth();
+                    }
+                }, 3000);
+            });
+        } else {
+            // DOM already loaded
+            console.log('📄 DOM already ready (vanilla JS), initializing immediately...');
+            setTimeout(initializeSystemHealth, 1000);
+        }
+    }
+}
+
+// Start initialization
+initHealthMonitoringWhenReady();
 </script>
 {% endblock %}
