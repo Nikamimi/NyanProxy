@@ -32,6 +32,7 @@ venv.bak/
 
 # Environment variables
 .env.local
+.env_backup
 .env.development.local
 .env.test.local
 .env.production.local
@@ -128,6 +129,7 @@ Desktop.ini
 *.old
 *~
 *.orig
+env_backup
 
 # Local configuration
 local_settings.py
@@ -141,3 +143,18 @@ config_local.py
 *.suo
 *.userosscache
 *.sln.docstates
+
+# Personal server management scripts
+server_control.py
+server_control.bat
+server_config.txt
+digitalocean.md
+kill-port-7860.bat
+
+# Screenshots and images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp

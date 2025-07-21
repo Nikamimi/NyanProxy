@@ -5,3 +5,6 @@ python-dotenv==1.0.0
 tiktoken==0.5.2
 firebase-admin==6.3.0
 Flask-WTF==1.1.1
+psutil==5.9.6
+gspread>=6.2.1
+google-auth>=2.40.3

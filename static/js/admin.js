@@ -1,13 +1,6 @@
 // Admin panel JavaScript functionality
 $(document).ready(function() {
-    // Setup CSRF token for AJAX requests
-    $.ajaxSetup({
-        beforeSend: function(xhr, settings) {
-            if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
-                xhr.setRequestHeader("X-CSRFToken", $('meta[name="csrf-token"]').attr('content'));
-            }
-        }
-    });
+    // Note: Using session-based authentication instead of CSRF tokens
     
     // Flash message auto-dismiss
     setTimeout(function() {
@@ -43,16 +36,24 @@ function refreshDashboardStats() {
 // User management functions
 function enableUser(token) {
     if (confirm('Are you sure you want to enable this user?')) {
-        $.post(`/admin/users/${token}/enable`, {})
+        $.ajax({
+            url: `/admin/api/users/${token}/enable`,
+            type: 'POST',
+            contentType: 'application/json'
+        })
         .done(function(data) {
             if (data.success) {
-                location.reload();
+                console.log('User enabled:', data);
+                // Update UI immediately instead of reloading
+                updateUserStateInUI(token, data.user_state);
+                showSuccessMessage(data.message);
             } else {
-                alert('Error: ' + data.error);
+                alert('Error: ' + (data.error || 'Unknown error'));
             }
         })
-        .fail(function() {
-            alert('Error: Failed to enable user');
+        .fail(function(xhr) {
+            console.error('Enable user error:', xhr);
+            alert('Error: HTTP ' + xhr.status + ' - ' + xhr.statusText);
         });
     }
 }
@@ -60,18 +61,25 @@ function enableUser(token) {
 function disableUser(token) {
     const reason = prompt('Reason for disabling user:');
     if (reason) {
-        $.post(`/admin/users/${token}/disable`, {
-            reason: reason
+        $.ajax({
+            url: `/admin/api/users/${token}/disable`,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ reason: reason })
         })
         .done(function(data) {
             if (data.success) {
-                location.reload();
+                console.log('User disabled:', data);
+                // Update UI immediately instead of reloading
+                updateUserStateInUI(token, data.user_state);
+                showSuccessMessage(data.message);
             } else {
-                alert('Error: ' + data.error);
+                alert('Error: ' + (data.error || 'Unknown error'));
             }
         })
-        .fail(function() {
-            alert('Error: Failed to disable user');
+        .fail(function(xhr) {
+            console.error('Disable user error:', xhr);
+            alert('Error: HTTP ' + xhr.status + ' - ' + xhr.statusText);
         });
     }
 }
@@ -79,35 +87,42 @@ function disableUser(token) {
 function deleteUser(token) {
     if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
         $.ajax({
-            url: `/admin/users/${token}`,
-            type: 'DELETE'
+            url: `/admin/api/users/${token}`,
+            type: 'DELETE',
+            contentType: 'application/json'
         })
         .done(function(data) {
             if (data.success) {
                 location.reload();
             } else {
-                alert('Error: ' + data.error);
+                alert('Error: ' + (data.error || 'Unknown error'));
             }
         })
-        .fail(function() {
-            alert('Error: Failed to delete user');
+        .fail(function(xhr) {
+            console.error('Delete user error:', xhr);
+            alert('Error: HTTP ' + xhr.status + ' - ' + xhr.statusText);
         });
     }
 }
 
 function rotateUserToken(token) {
     if (confirm('Are you sure you want to rotate this user\'s token? The old token will be invalidated.')) {
-        $.post(`/admin/users/${token}/rotate`, {})
+        $.ajax({
+            url: `/admin/api/users/${token}/rotate`,
+            type: 'POST',
+            contentType: 'application/json'
+        })
         .done(function(data) {
             if (data.success) {
                 alert('Token rotated successfully. New token: ' + data.new_token);
                 location.reload();
             } else {
-                alert('Error: ' + data.error);
+                alert('Error: ' + (data.error || 'Unknown error'));
             }
         })
-        .fail(function() {
-            alert('Error: Failed to rotate token');
+        .fail(function(xhr) {
+            console.error('Rotate token error:', xhr);
+            alert('Error: HTTP ' + xhr.status + ' - ' + xhr.statusText);
         });
     }
 }
@@ -224,4 +239,73 @@ function exportUsers() {
 
 function exportEvents() {
     window.location.href = '/admin/export/events';
+}
+
+// UI update functions for real-time sync
+function updateUserStateInUI(token, userState) {
+    console.log('Updating UI for user:', token, 'State:', userState);
+    
+    // Find the user row in the table
+    const userRow = $(`tr`).filter(function() {
+        return $(this).find('code').text().startsWith(token.substring(0, 8));
+    });
+    
+    if (userRow.length > 0) {
+        // Update status column
+        const statusCell = userRow.find('td').eq(4); // Status is the 5th column (0-indexed)
+        if (userState.is_disabled) {
+            statusCell.html('<span class="status-disabled">Disabled</span>');
+            userRow.addClass('disabled');
+        } else {
+            statusCell.html('<span class="status-active">Active</span>');
+            userRow.removeClass('disabled');
+        }
+        
+        // Update action buttons
+        const actionCell = userRow.find('td').eq(6); // Actions is the 7th column
+        const actionButtons = actionCell.find('.action-buttons');
+        
+        // Remove existing enable/disable buttons
+        actionButtons.find('.btn-success, .btn-warning').remove();
+        
+        // Add the appropriate button
+        const editBtn = actionButtons.find('.btn-secondary');
+        if (userState.is_disabled) {
+            editBtn.after(`
+                <button class="btn btn-sm btn-success" onclick="enableUser('${token}')">
+                    <span class="cat-emoji">✅</span> Enable
+                </button>
+            `);
+        } else {
+            editBtn.after(`
+                <button class="btn btn-sm btn-warning" onclick="disableUser('${token}')">
+                    <span class="cat-emoji">⏸️</span> Disable
+                </button>
+            `);
+        }
+        
+        console.log('UI updated for user:', token);
+    } else {
+        console.warn('Could not find user row for token:', token);
+        // Fallback to page reload if we can't find the row
+        setTimeout(() => location.reload(), 1000);
+    }
+}
+
+function showSuccessMessage(message) {
+    // Create a temporary success message
+    const successDiv = $(`
+        <div class="alert alert-success" style="position: fixed; top: 20px; right: 20px; z-index: 10000; padding: 15px; border-radius: 10px; background: rgba(76, 175, 80, 0.9); color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+            <span class="cat-emoji">✅</span> ${message}
+        </div>
+    `);
+    
+    $('body').append(successDiv);
+    
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+        successDiv.fadeOut(300, function() {
+            $(this).remove();
+        });
+    }, 3000);
 }

@@ -106,7 +106,7 @@ curl -X POST \
   -d '{
     "type": "normal",
     "nickname": "John Doe",
-    "token_limits": {
+    "prompt_limits": {
       "openai": 100000,
       "anthropic": 50000
     }
@@ -186,7 +186,7 @@ FIREBASE_SERVICE_ACCOUNT_KEY='{"type":"service_account",...}'
         "openai": {"input": 1000, "output": 500, "total": 1500},
         "anthropic": {"input": 800, "output": 400, "total": 1200}
       },
-      "token_limits": {
+      "prompt_limits": {
         "openai": 100000,
         "anthropic": 50000
       },
@@ -314,7 +314,7 @@ response = requests.post('https://your-proxy.com/admin/users',
     json={
         'type': 'normal',
         'nickname': 'Test User',
-        'token_limits': {'openai': 50000}
+        'prompt_limits': {'openai': 50000}
     })
 ```
 

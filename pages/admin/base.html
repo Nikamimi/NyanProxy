@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Admin Dashboard{% endblock %} - {{ config.brand_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/nyancat.css') }}">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- CSRF token removed - using admin session authentication instead -->
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
@@ -413,6 +413,13 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script>
+        // Fallback for jQuery if CDN fails
+        if (typeof jQuery === 'undefined') {
+            console.warn('⚠️ jQuery CDN failed, loading from local backup...');
+            document.write('<script src="{{ url_for("static", filename="js/jquery-3.6.0.min.js") }}"><\/script>');
+        }
+    </script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

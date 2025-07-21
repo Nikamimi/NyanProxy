@@ -304,6 +304,11 @@
     .btn-sm {
         padding: 4px 8px;
         font-size: 12px;
+        min-width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 </style>
 {% endblock %}
@@ -349,13 +354,63 @@
             <div class="provider-header">
                 <div class="provider-name">{{ provider_data.name }}</div>
                 <div class="provider-stats">
-                    {{ provider_data.whitelisted_count }}/{{ provider_data.total_count }} enabled
+                    {{ provider_data.enabled_count }}/{{ provider_data.config_count }} configs enabled
+                    {% if provider_data.legacy_count > 0 %}
+                    | {{ provider_data.legacy_whitelisted_count }}/{{ provider_data.legacy_count }} legacy enabled
+                    {% endif %}
                 </div>
             </div>
             
             <div class="model-list">
-                {% for model in provider_data.all_models %}
-                <div class="model-item">
+                <!-- New Model Configurations -->
+                {% for config in provider_data.model_configs %}
+                <div class="model-item" style="border-left: 3px solid {% if config.status == 'enabled' %}#28a745{% else %}#6c757d{% endif %};">
+                    <div class="model-info">
+                        <div class="model-name">
+                            <span class="cat-personality">{{ config.cat_emoji }}</span>
+                            {{ config.display_name }}
+                            {% if config.is_premium %}
+                            <span class="premium-badge">PREMIUM</span>
+                            {% endif %}
+                            <span style="font-size: 0.7em; color: #4ecdc4; background: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 4px; margin-left: 5px;">
+                                {{ config.model_ids_count }} snapshot{{ "s" if config.model_ids_count > 1 else "" }}
+                            </span>
+                        </div>
+                        <div class="model-description">{{ config.description }}</div>
+                        <div class="model-cost">
+                            Input: ${{ "%.3f"|format(config.input_cost) }}/1M | 
+                            Output: ${{ "%.3f"|format(config.output_cost) }}/1M |
+                            Context: {{ "{:,}".format(config.context_length) }}
+                            {% if config.max_input_tokens or config.max_output_tokens %}
+                            <br><strong>Token Limits:</strong> 
+                            {% if config.max_input_tokens %}{{ "{:,}".format(config.max_input_tokens) }} in{% else %}No limit{% endif %} | 
+                            {% if config.max_output_tokens %}{{ "{:,}".format(config.max_output_tokens) }} out{% else %}No limit{% endif %}
+                            {% endif %}
+                            <br><small><strong>Model IDs:</strong> {{ config.model_ids | join(', ') }}</small>
+                        </div>
+                    </div>
+                    <div class="model-actions" style="display: flex; align-items: center; gap: 10px;">
+                        <label class="toggle-switch">
+                            <input type="checkbox" 
+                                   {% if config.status == 'enabled' %}checked{% endif %}
+                                   onchange="toggleModelConfig('{{ provider_key }}', '{{ config.sanitized_name }}', this)"
+                                   data-config-name="{{ config.sanitized_name }}"
+                                   data-provider="{{ provider_key }}">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <button class="btn btn-sm btn-secondary" onclick="editModelConfig('{{ provider_key }}', '{{ config.sanitized_name }}')" title="Edit Model Config">
+                            ✏️
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteModelConfig('{{ provider_key }}', '{{ config.sanitized_name }}')" title="Delete Model Config">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+                
+                <!-- Legacy Models (if any) -->
+                {% for model in provider_data.legacy_models %}
+                <div class="model-item" style="opacity: 0.7; border-left: 3px solid #ccc;">
                     <div class="model-info">
                         <div class="model-name">
                             <span class="cat-personality">{{ model.cat_emoji }}</span>
@@ -363,6 +418,9 @@
                             {% if model.is_premium %}
                             <span class="premium-badge">PREMIUM</span>
                             {% endif %}
+                            <span style="font-size: 0.7em; color: #666; background: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 4px; margin-left: 5px;">
+                                Legacy
+                            </span>
                         </div>
                         <div class="model-description">{{ model.description }}</div>
                         <div class="model-cost">
@@ -371,7 +429,7 @@
                             Context: {{ "{:,}".format(model.context_length) }}
                         </div>
                     </div>
-                    <div class="model-toggle">
+                    <div class="model-actions" style="display: flex; align-items: center; gap: 10px;">
                         <label class="toggle-switch">
                             <input type="checkbox" 
                                    {% if model.is_whitelisted %}checked{% endif %}
@@ -380,9 +438,22 @@
                                    data-provider="{{ provider_key }}">
                             <span class="toggle-slider"></span>
                         </label>
+                        <button class="btn btn-sm btn-secondary" onclick="editModel('{{ model.id }}')" title="Edit Legacy Model">
+                            ✏️
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteModel('{{ model.id }}')" title="Delete Legacy Model">
+                            🗑️
+                        </button>
                     </div>
                 </div>
                 {% endfor %}
+                
+                <!-- Empty state -->
+                {% if provider_data.model_configs|length == 0 and provider_data.legacy_models|length == 0 %}
+                <div style="text-align: center; padding: 20px; color: #666; font-style: italic;">
+                    No models configured for {{ provider_data.name }}. Click "Add New Model" to get started!
+                </div>
+                {% endif %}
             </div>
             
             <div style="margin-top: 15px;">
@@ -395,6 +466,63 @@
             </div>
         </div>
         {% endfor %}
+        
+        <!-- Static provider cards for new families without backend support yet -->
+        <!-- Deepseek Provider Card -->
+        {% if 'deepseek' not in providers %}
+        <div class="provider-card">
+            <div class="provider-header">
+                <div class="provider-name">Deepseek</div>
+                <div class="provider-stats">
+                    0/0 configs enabled
+                </div>
+            </div>
+            
+            <div class="model-list">
+                <!-- Empty state -->
+                <div style="text-align: center; padding: 20px; color: #666; font-style: italic;">
+                    No models configured for Deepseek. Click "Add New Model" to get started!
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button onclick="toggleAllProviderModels('deepseek', true)" 
+                        class="btn btn-sm btn-success">Enable All</button>
+                <button onclick="toggleAllProviderModels('deepseek', false)" 
+                        class="btn btn-sm btn-secondary">Disable All</button>
+                <a href="{{ url_for('model_families.provider_details', provider_name='deepseek') }}" 
+                   class="btn btn-sm btn-info">Details</a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Grok Provider Card -->
+        {% if 'grok' not in providers %}
+        <div class="provider-card">
+            <div class="provider-header">
+                <div class="provider-name">Grok</div>
+                <div class="provider-stats">
+                    0/0 configs enabled
+                </div>
+            </div>
+            
+            <div class="model-list">
+                <!-- Empty state -->
+                <div style="text-align: center; padding: 20px; color: #666; font-style: italic;">
+                    No models configured for Grok. Click "Add New Model" to get started!
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button onclick="toggleAllProviderModels('grok', true)" 
+                        class="btn btn-sm btn-success">Enable All</button>
+                <button onclick="toggleAllProviderModels('grok', false)" 
+                        class="btn btn-sm btn-secondary">Disable All</button>
+                <a href="{{ url_for('model_families.provider_details', provider_name='grok') }}" 
+                   class="btn btn-sm btn-info">Details</a>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -402,13 +530,14 @@
 <div id="addModelModal" class="modal" style="display: none;">
     <div class="modal-content" style="max-width: 600px;">
         <span class="close" onclick="hideModal('addModelModal')">&times;</span>
-        <h3>🐱 Add New Model</h3>
+        <h3>🐱 Add New Model Configuration</h3>
         <form id="addModelForm">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                 <div class="form-group">
-                    <label for="model_id">Model ID *</label>
-                    <input type="text" id="model_id" name="model_id" required 
-                           placeholder="e.g., gpt-4.1-turbo">
+                    <label for="display_name">Model Name *</label>
+                    <input type="text" id="display_name" name="display_name" required 
+                           placeholder="e.g., GPT-4o, Claude Sonnet">
+                    <small style="color: #666; font-size: 12px;">This will be used as both the display name and config identifier</small>
                 </div>
                 <div class="form-group">
                     <label for="provider">Provider *</label>
@@ -420,12 +549,9 @@
                         <option value="mistral">Mistral</option>
                         <option value="groq">Groq</option>
                         <option value="cohere">Cohere</option>
+                        <option value="deepseek">Deepseek</option>
+                        <option value="grok">Grok</option>
                     </select>
-                </div>
-                <div class="form-group">
-                    <label for="display_name">Display Name *</label>
-                    <input type="text" id="display_name" name="display_name" required 
-                           placeholder="e.g., GPT-4.1 Turbo">
                 </div>
                 <div class="form-group">
                     <label for="cat_personality">Cat Personality</label>
@@ -454,6 +580,18 @@
                            min="1" value="4096" placeholder="4096">
                 </div>
                 <div class="form-group">
+                    <label for="max_input_tokens">Max Input Tokens (Optional)</label>
+                    <input type="number" id="max_input_tokens" name="max_input_tokens" 
+                           min="1" placeholder="e.g., 64000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
+                    <label for="max_output_tokens">Max Output Tokens (Optional)</label>
+                    <input type="number" id="max_output_tokens" name="max_output_tokens" 
+                           min="1" placeholder="e.g., 4000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
                     <label>
                         <input type="checkbox" id="supports_streaming" name="supports_streaming" checked>
                         Supports Streaming
@@ -473,10 +611,16 @@
                 </div>
                 <div class="form-group">
                     <label>
-                        <input type="checkbox" id="auto_whitelist" name="auto_whitelist" checked>
+                        <input type="checkbox" id="auto_enable" name="auto_enable" checked>
                         Auto-enable when added
                     </label>
                 </div>
+            </div>
+            <div class="form-group">
+                <label for="model_ids">Model IDs (Snapshots) *</label>
+                <textarea id="model_ids" name="model_ids" required rows="3"
+                          placeholder="gpt-4o&#10;gpt-4o-2024-11-20&#10;gpt-4o-2024-08-06"></textarea>
+                <small style="color: #666; font-size: 12px;">Enter one model ID per line. For GPT-4o example: gpt-4o, gpt-4o-2024-11-20, etc.</small>
             </div>
             <div class="form-group">
                 <label for="description">Description *</label>
@@ -503,13 +647,101 @@
     </div>
 </div>
 
+<!-- Edit Model Modal -->
+<div id="editModelModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close" onclick="hideModal('editModelModal')">&times;</span>
+        <h3>✏️ Edit Model Configuration</h3>
+        <div id="editModelErrors" class="error" style="display: none;"></div>
+        <form id="editModelForm">
+            <input type="hidden" id="edit_model_name" name="model_name">
+            <input type="hidden" id="edit_provider" name="provider">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label for="edit_display_name">Model Name *</label>
+                    <input type="text" id="edit_display_name" name="display_name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit_cat_personality">Cat Personality</label>
+                    <select id="edit_cat_personality" name="cat_personality">
+                        <option value="curious">🙀 Curious</option>
+                        <option value="playful">😸 Playful</option>
+                        <option value="sleepy">😴 Sleepy</option>
+                        <option value="grumpy">😾 Grumpy</option>
+                        <option value="smart">🤓 Smart</option>
+                        <option value="fast">💨 Fast</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit_input_cost_per_1m">Input Cost per 1M tokens ($)</label>
+                    <input type="number" id="edit_input_cost_per_1m" name="input_cost_per_1m" 
+                           step="0.001" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="edit_output_cost_per_1m">Output Cost per 1M tokens ($)</label>
+                    <input type="number" id="edit_output_cost_per_1m" name="output_cost_per_1m" 
+                           step="0.001" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="edit_context_length">Context Length</label>
+                    <input type="number" id="edit_context_length" name="context_length" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="edit_max_input_tokens">Max Input Tokens (Optional)</label>
+                    <input type="number" id="edit_max_input_tokens" name="max_input_tokens" 
+                           min="1" placeholder="e.g., 64000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit_max_output_tokens">Max Output Tokens (Optional)</label>
+                    <input type="number" id="edit_max_output_tokens" name="max_output_tokens" 
+                           min="1" placeholder="e.g., 4000">
+                    <small style="color: #666; font-size: 12px;">Leave empty for no limit</small>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit_supports_streaming" name="supports_streaming">
+                        Supports Streaming
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit_supports_function_calling" name="supports_function_calling">
+                        Supports Function Calling
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit_is_premium" name="is_premium">
+                        Premium Model
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="edit_model_ids">Model IDs (Snapshots) *</label>
+                <textarea id="edit_model_ids" name="model_ids" required rows="3"
+                          placeholder="gpt-4o&#10;gpt-4o-2024-11-20&#10;gpt-4o-2024-08-06"></textarea>
+                <small style="color: #666; font-size: 12px;">Enter one model ID per line</small>
+            </div>
+            <div class="form-group">
+                <label for="edit_description">Description</label>
+                <textarea id="edit_description" name="description" rows="3"></textarea>
+            </div>
+            <div style="text-align: right; margin-top: 15px;">
+                <button type="submit" class="btn btn-primary">Update Model</button>
+                <button type="button" class="btn btn-secondary" onclick="hideModal('editModelModal')">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 function toggleModel(provider, modelId, checkbox) {
     fetch(`/admin/model-families/api/model/${modelId}/toggle`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
         }
     })
     .then(response => response.json())
@@ -589,7 +821,7 @@ function updateProviderWhitelist(provider, modelIds) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
         },
         body: JSON.stringify({
             provider: provider,
@@ -684,26 +916,35 @@ document.getElementById('addModelForm').addEventListener('submit', function(e) {
     
     // Convert form data to object
     for (let [key, value] of formData.entries()) {
-        if (key.startsWith('supports_') || key.startsWith('is_') || key === 'auto_whitelist') {
+        if (key.startsWith('supports_') || key.startsWith('is_') || key === 'auto_enable') {
             data[key] = true; // Checkbox is checked
+        } else if (key === 'model_ids') {
+            // Split model IDs by newlines and filter empty lines
+            data[key] = value.split('\n').map(id => id.trim()).filter(id => id.length > 0);
         } else {
             data[key] = value;
         }
     }
     
     // Set unchecked checkboxes to false
-    const checkboxes = ['supports_streaming', 'supports_function_calling', 'is_premium', 'auto_whitelist'];
+    const checkboxes = ['supports_streaming', 'supports_function_calling', 'is_premium', 'auto_enable'];
     checkboxes.forEach(cb => {
         if (!data[cb]) {
             data[cb] = false;
         }
     });
     
+    // Set status based on auto_enable
+    data['status'] = data['auto_enable'] ? 'enabled' : 'disabled';
+    
+    // Use display_name as the model_name (config identifier)
+    data['model_name'] = data['display_name'];
+    
     // Add debug logging
     console.log('Submitting model data:', data);
     
     // Submit the form
-    fetch('/admin/model-families/api/models', {
+    fetch('/admin/model-families/api/model-configs', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -787,6 +1028,7 @@ function renderCustomModels(models) {
                         ${model.is_premium ? '<span class="premium-badge">PREMIUM</span>' : ''}
                     </div>
                     <div class="custom-model-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="editCustomModel('${model.model_id}')">Edit</button>
                         <button class="btn btn-sm btn-danger" onclick="deleteCustomModel('${model.model_id}')">Delete</button>
                     </div>
                 </div>
@@ -796,6 +1038,7 @@ function renderCustomModels(models) {
                     <strong>Description:</strong> ${model.description}<br>
                     <strong>Costs:</strong> $${model.input_cost_per_1m.toFixed(3)}/1M in, $${model.output_cost_per_1m.toFixed(3)}/1M out<br>
                     <strong>Context:</strong> ${model.context_length.toLocaleString()} tokens<br>
+                    <strong>Token Limits:</strong> ${model.max_input_tokens ? model.max_input_tokens.toLocaleString() + ' in' : 'No limit'}, ${model.max_output_tokens ? model.max_output_tokens.toLocaleString() + ' out' : 'No limit'}<br>
                     <strong>Status:</strong> ${model.is_whitelisted ? '<span style="color: green;">Enabled</span>' : '<span style="color: red;">Disabled</span>'}
                 </div>
             </div>
@@ -822,6 +1065,359 @@ function deleteCustomModel(modelId) {
             showNotification(result.message, 'success');
             loadCustomModels(); // Refresh the list
             // Also refresh the main page after a short delay
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(result.error || 'Failed to delete model', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+    });
+}
+
+function editCustomModel(modelId) {
+    // Get model data first
+    fetch('/admin/model-families/api/models/custom')
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                const model = result.models.find(m => m.model_id === modelId);
+                if (model) {
+                    populateEditForm(model);
+                    showModal('editModelModal');
+                } else {
+                    showNotification('Model not found', 'error');
+                }
+            } else {
+                showNotification('Failed to load model data', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Network error occurred', 'error');
+        });
+}
+
+function populateEditForm(model) {
+    document.getElementById('edit_model_id').value = model.model_id;
+    document.getElementById('edit_display_name').value = model.display_name;
+    document.getElementById('edit_description').value = model.description;
+    document.getElementById('edit_cat_personality').value = model.cat_personality;
+    document.getElementById('edit_input_cost_per_1m').value = model.input_cost_per_1m;
+    document.getElementById('edit_output_cost_per_1m').value = model.output_cost_per_1m;
+    document.getElementById('edit_context_length').value = model.context_length;
+    document.getElementById('edit_max_input_tokens').value = model.max_input_tokens || '';
+    document.getElementById('edit_max_output_tokens').value = model.max_output_tokens || '';
+    document.getElementById('edit_supports_streaming').checked = model.supports_streaming;
+    document.getElementById('edit_supports_function_calling').checked = model.supports_function_calling;
+    document.getElementById('edit_is_premium').checked = model.is_premium;
+    document.getElementById('editModelErrors').style.display = 'none';
+}
+
+// Handle edit form submission
+document.getElementById('editModelForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {};
+    
+    // Convert form data to object
+    for (let [key, value] of formData.entries()) {
+        if (key.startsWith('supports_') || key.startsWith('is_')) {
+            data[key] = true; // Checkbox is checked
+        } else if (key === 'model_ids') {
+            // Split model IDs by newlines and filter empty lines
+            data[key] = value.split('\n').map(id => id.trim()).filter(id => id.length > 0);
+        } else {
+            data[key] = value;
+        }
+    }
+    
+    // Set unchecked checkboxes to false
+    const checkboxes = ['supports_streaming', 'supports_function_calling', 'is_premium'];
+    checkboxes.forEach(name => {
+        if (!(name in data)) {
+            data[name] = false;
+        }
+    });
+    
+    const modelName = data.model_name;
+    const provider = data.provider;
+    delete data.model_name; // Remove from data since it's in the URL
+    delete data.provider; // Remove from data since it's in the URL
+    
+    console.log('🔧 Updating model config:', provider, modelName, 'with data:', data);
+    
+    fetch(`/admin/model-families/api/model-configs/${provider}/${encodeURIComponent(modelName)}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            hideModal('editModelModal');
+            showNotification(result.message, 'success');
+            loadCustomModels(); // Refresh the list
+            // Also refresh the main page after a short delay
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            const errorDiv = document.getElementById('editModelErrors');
+            if (result.field_errors) {
+                let errorText = 'Validation errors:';
+                for (let field in result.field_errors) {
+                    errorText += `\n${field}: ${result.field_errors[field]}`;
+                }
+                errorDiv.textContent = errorText;
+            } else {
+                errorDiv.textContent = 'Error: ' + result.error;
+            }
+            errorDiv.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        const errorDiv = document.getElementById('editModelErrors');
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+});
+
+// Functions for new model config system
+function toggleModelConfig(provider, sanitizedName, checkbox) {
+    console.log('🐱 Toggle model config:', provider, sanitizedName);
+    
+    if (!checkbox) {
+        console.error('❌ Checkbox not provided');
+        return;
+    }
+    
+    const newStatus = checkbox.checked ? 'enabled' : 'disabled';
+    
+    fetch(`/admin/model-families/api/model-configs/${provider}/${encodeURIComponent(sanitizedName)}/status`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify({
+            status: newStatus
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message, 'success');
+            updateProviderStats(provider);
+        } else {
+            showNotification(data.error || 'Failed to update model config', 'error');
+            checkbox.checked = !checkbox.checked; // Revert checkbox
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+        checkbox.checked = !checkbox.checked; // Revert checkbox
+    });
+}
+
+function editModelConfig(provider, sanitizedName) {
+    console.log('🐱 Edit model config:', provider, sanitizedName);
+    
+    // Get model config data
+    fetch(`/admin/model-families/api/model-configs?provider=${provider}`)
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                const providerConfigs = result.model_configs[provider];
+                if (!providerConfigs) {
+                    showNotification('Provider not found', 'error');
+                    return;
+                }
+                
+                // Find the config - need to match by sanitized name
+                let matchedConfig = null;
+                let actualModelName = null;
+                
+                for (const [modelName, modelConfig] of Object.entries(providerConfigs)) {
+                    if (modelConfig.sanitized_name === sanitizedName) {
+                        matchedConfig = modelConfig;
+                        actualModelName = modelName;
+                        break;
+                    }
+                }
+                
+                if (!matchedConfig) {
+                    showNotification('Model configuration not found', 'error');
+                    return;
+                }
+                
+                // Populate edit form with config data
+                populateEditFormFromConfig(matchedConfig, actualModelName, provider);
+                showModal('editModelModal');
+            } else {
+                showNotification('Failed to load model configurations', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Network error occurred', 'error');
+        });
+}
+
+function deleteModelConfig(provider, sanitizedName) {
+    if (!confirm('Are you sure you want to delete this model configuration? This action cannot be undone.')) {
+        return;
+    }
+    
+    fetch(`/admin/model-families/api/model-configs/${provider}/${encodeURIComponent(sanitizedName)}`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showNotification(result.message, 'success');
+            // Refresh the page after a short delay
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(result.error || 'Failed to delete model config', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Network error occurred', 'error');
+    });
+}
+
+function populateEditFormFromConfig(config, modelName, provider) {
+    // Set hidden fields for the update
+    document.getElementById('edit_model_name').value = modelName;
+    document.getElementById('edit_provider').value = provider;
+    
+    // Populate form fields
+    document.getElementById('edit_display_name').value = config.display_name || modelName;
+    document.getElementById('edit_description').value = config.description || '';
+    document.getElementById('edit_cat_personality').value = config.cat_personality || 'curious';
+    document.getElementById('edit_input_cost_per_1m').value = config.input_cost_per_1m || 0;
+    document.getElementById('edit_output_cost_per_1m').value = config.output_cost_per_1m || 0;
+    document.getElementById('edit_context_length').value = config.context_length || 4096;
+    document.getElementById('edit_max_input_tokens').value = config.max_input_tokens || '';
+    document.getElementById('edit_max_output_tokens').value = config.max_output_tokens || '';
+    
+    // Handle model_ids array - join with newlines
+    if (config.model_ids && Array.isArray(config.model_ids)) {
+        document.getElementById('edit_model_ids').value = config.model_ids.join('\n');
+    } else {
+        document.getElementById('edit_model_ids').value = '';
+    }
+    
+    document.getElementById('edit_supports_streaming').checked = config.supports_streaming || false;
+    document.getElementById('edit_supports_function_calling').checked = config.supports_function_calling || false;
+    document.getElementById('edit_is_premium').checked = config.is_premium || false;
+    document.getElementById('editModelErrors').style.display = 'none';
+}
+
+// Functions for main model list edit/delete  
+function editModel(modelId) {
+    console.log('🐱 Edit model clicked:', modelId);
+    
+    // Check if modal exists
+    const modal = document.getElementById('editModelModal');
+    if (!modal) {
+        console.error('❌ Edit modal not found in DOM');
+        alert('Edit modal not found. Please refresh the page.');
+        return;
+    }
+    
+    // Simple approach - fetch model info directly
+    fetch(`/admin/model-families/api/model-info/${modelId}`)
+        .then(response => {
+            console.log('📡 API Response status:', response.status);
+            return response.json();
+        })
+        .then(result => {
+            console.log('📦 API Result:', result);
+            if (result.success) {
+                populateEditFormFromAPI(result.model);
+                showModal('editModelModal');
+                console.log('✅ Modal should be open now');
+            } else {
+                console.error('❌ API Error:', result.error);
+                alert('Failed to load model data: ' + result.error);
+            }
+        })
+        .catch(error => {
+            console.error('❌ Network Error:', error);
+            alert('Network error: ' + error.message);
+        });
+}
+
+function populateEditFormFromCustom(model) {
+    document.getElementById('edit_model_id').value = model.model_id;
+    document.getElementById('edit_provider').value = model.provider;
+    document.getElementById('edit_display_name').value = model.display_name;
+    document.getElementById('edit_description').value = model.description;
+    document.getElementById('edit_cat_personality').value = model.cat_personality;
+    document.getElementById('edit_input_cost_per_1m').value = model.input_cost_per_1m;
+    document.getElementById('edit_output_cost_per_1m').value = model.output_cost_per_1m;
+    document.getElementById('edit_context_length').value = model.context_length;
+    document.getElementById('edit_max_input_tokens').value = model.max_input_tokens || '';
+    document.getElementById('edit_max_output_tokens').value = model.max_output_tokens || '';
+    document.getElementById('edit_supports_streaming').checked = model.supports_streaming;
+    document.getElementById('edit_supports_function_calling').checked = model.supports_function_calling;
+    document.getElementById('edit_is_premium').checked = model.is_premium;
+    document.getElementById('editModelErrors').style.display = 'none';
+}
+
+function populateEditFormFromAPI(model) {
+    document.getElementById('edit_model_name').value = model.model_name || model.model_id; // Fallback for legacy
+    document.getElementById('edit_provider').value = model.provider;
+    document.getElementById('edit_display_name').value = model.display_name;
+    document.getElementById('edit_description').value = model.description;
+    document.getElementById('edit_cat_personality').value = model.cat_personality;
+    document.getElementById('edit_input_cost_per_1m').value = model.input_cost_per_1m;
+    document.getElementById('edit_output_cost_per_1m').value = model.output_cost_per_1m;
+    document.getElementById('edit_context_length').value = model.context_length;
+    document.getElementById('edit_max_input_tokens').value = model.max_input_tokens || '';
+    document.getElementById('edit_max_output_tokens').value = model.max_output_tokens || '';
+    
+    // Handle model_ids array - join with newlines
+    if (model.model_ids && Array.isArray(model.model_ids)) {
+        document.getElementById('edit_model_ids').value = model.model_ids.join('\n');
+    } else if (model.model_id) {
+        // Fallback for legacy single model_id
+        document.getElementById('edit_model_ids').value = model.model_id;
+    }
+    
+    document.getElementById('edit_supports_streaming').checked = model.supports_streaming;
+    document.getElementById('edit_supports_function_calling').checked = model.supports_function_calling;
+    document.getElementById('edit_is_premium').checked = model.is_premium;
+    document.getElementById('editModelErrors').style.display = 'none';
+}
+
+function deleteModel(modelId) {
+    if (!confirm('Are you sure you want to delete this model? This action cannot be undone.')) {
+        return;
+    }
+    
+    fetch(`/admin/model-families/api/models/${modelId}`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            showNotification(result.message, 'success');
+            // Refresh the page after a short delay
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification(result.error || 'Failed to delete model', 'error');

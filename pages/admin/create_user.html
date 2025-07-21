@@ -41,15 +41,15 @@
         </div>
         
         <div class="form-group">
-            <label for="openai_limit">OpenAI Token Limit:</label>
-            <input type="number" id="openai_limit" name="openai_limit" min="0" placeholder="100000">
-            <small>Maximum tokens this user can consume for OpenAI models (leave empty for unlimited)</small>
+            <label for="openai_limit">OpenAI Request Limit:</label>
+            <input type="number" id="openai_limit" name="openai_limit" min="0" placeholder="">
+            <small>Maximum requests this user can make to OpenAI models (leave empty for unlimited)</small>
         </div>
         
         <div class="form-group">
-            <label for="anthropic_limit">Anthropic Token Limit:</label>
-            <input type="number" id="anthropic_limit" name="anthropic_limit" min="0" placeholder="50000">
-            <small>Maximum tokens this user can consume for Anthropic models (leave empty for unlimited)</small>
+            <label for="anthropic_limit">Anthropic Request Limit:</label>
+            <input type="number" id="anthropic_limit" name="anthropic_limit" min="0" placeholder="">
+            <small>Maximum requests this user can make to Anthropic models (leave empty for unlimited)</small>
         </div>
         
         <!-- Temporary User Options -->
@@ -336,14 +336,14 @@
         const openaiLimit = document.getElementById('openai_limit').value;
         const anthropicLimit = document.getElementById('anthropic_limit').value;
         
-        // Validate token limits
+        // Validate request limits
         if (openaiLimit && (isNaN(openaiLimit) || parseInt(openaiLimit) < 0)) {
-            alert('OpenAI token limit must be a positive number');
+            alert('OpenAI request limit must be a positive number');
             return false;
         }
         
         if (anthropicLimit && (isNaN(anthropicLimit) || parseInt(anthropicLimit) < 0)) {
-            alert('Anthropic token limit must be a positive number');
+            alert('Anthropic request limit must be a positive number');
             return false;
         }
         

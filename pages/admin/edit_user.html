@@ -42,17 +42,17 @@
         </div>
         
         <div class="form-group">
-            <label for="openai_limit">OpenAI Token Limit:</label>
+            <label for="openai_limit">OpenAI Request Limit:</label>
             <input type="number" id="openai_limit" name="openai_limit" min="0" 
-                   value="{{ user.token_limits.get('openai', '') }}" placeholder="Leave empty for unlimited">
-            <small>Maximum tokens this user can consume for OpenAI models</small>
+                   value="{{ user.prompt_limits.get('openai', '') }}" placeholder="Leave empty for unlimited">
+            <small>Maximum requests this user can make to OpenAI models</small>
         </div>
         
         <div class="form-group">
-            <label for="anthropic_limit">Anthropic Token Limit:</label>
+            <label for="anthropic_limit">Anthropic Request Limit:</label>
             <input type="number" id="anthropic_limit" name="anthropic_limit" min="0" 
-                   value="{{ user.token_limits.get('anthropic', '') }}" placeholder="Leave empty for unlimited">
-            <small>Maximum tokens this user can consume for Anthropic models</small>
+                   value="{{ user.prompt_limits.get('anthropic', '') }}" placeholder="Leave empty for unlimited">
+            <small>Maximum requests this user can make to Anthropic models</small>
         </div>
         
         <div class="current-usage">
@@ -61,20 +61,22 @@
                 <thead>
                     <tr>
                         <th>Model Family</th>
+                        <th>Requests Made</th>
                         <th>Input Tokens</th>
                         <th>Output Tokens</th>
                         <th>Total Tokens</th>
-                        <th>Current Limit</th>
+                        <th>Request Limit</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for family, count in user.token_counts.items() %}
                     <tr>
                         <td>{{ family }}</td>
+                        <td>{{ count.requests }}</td>
                         <td>{{ count.input }}</td>
                         <td>{{ count.output }}</td>
                         <td>{{ count.total }}</td>
-                        <td>{{ user.token_limits.get(family, 'Unlimited') }}</td>
+                        <td>{{ user.prompt_limits.get(family) or 'Unlimited' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

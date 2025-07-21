@@ -186,6 +186,20 @@ class FirebaseEventLogger:
             print(f"Failed to get user stats: {e}")
             return {}
     
+    def log_user_action(self, token: str, action: str, details: Dict[str, Any] = None, 
+                       admin_user: str = None) -> bool:
+        """Log a user action event (admin actions, etc.)"""
+        event = Event(
+            token=token,
+            event_type="user_action",
+            payload={
+                "action": action,
+                "details": details or {},
+                "admin_user": admin_user
+            }
+        )
+        return self.log_event(event)
+
     def cleanup_old_events(self, days: int = 90) -> bool:
         """Clean up events older than specified days"""
         if not self.firebase_available:

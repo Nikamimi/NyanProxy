@@ -129,6 +129,7 @@ def authenticate_request() -> Tuple[bool, Optional[str], Optional[dict]]:
             # Check rate limit by user token
             allowed, remaining = check_rate_limit(token)
             if not allowed:
+                user.record_rate_limit_violation()
                 return False, "Rate limit exceeded", None
             
             return True, None, {
@@ -184,11 +185,12 @@ def check_quota(model_family: str) -> Tuple[bool, Optional[str]]:
     has_quota, used, limit = user_store.check_quota(token, model_family)
     
     if not has_quota:
-        return False, f"Quota exceeded for {model_family}: {used}/{limit} tokens used"
+        limit_text = "unlimited" if limit is None else str(limit)
+        return False, f"Request quota exceeded for {model_family}: {used}/{limit_text} requests used"
     
     return True, None
 
-def track_token_usage(model_family: str, input_tokens: int, output_tokens: int, cost: float = 0.0, response_time_ms: float = 0.0):
+def track_token_usage(model_name: str, input_tokens: int, output_tokens: int, cost: float = 0.0, response_time_ms: float = 0.0):
     """Track token usage for current user with enhanced tracking"""
     if not hasattr(g, 'auth_data') or g.auth_data["type"] != "user_token":
         return  # No tracking for non-user-token auth
@@ -198,9 +200,18 @@ def track_token_usage(model_family: str, input_tokens: int, output_tokens: int, 
     ip_hash = hashlib.sha256(g.auth_data["ip"].encode()).hexdigest()
     user_agent = request.headers.get('User-Agent', '')
     
-    # Use the enhanced tracking method
+    # Determine model family from model name for backwards compatibility
+    model_family = "openai"  # default
+    if "claude" in model_name.lower():
+        model_family = "anthropic"
+    elif "gemini" in model_name.lower():
+        model_family = "google"
+    elif "gpt" in model_name.lower() or "o1" in model_name.lower() or "o3" in model_name.lower():
+        model_family = "openai"
+    
+    # Use the enhanced tracking method with specific model name
     user.add_request_tracking(
-        model_family=model_family,
+        model_family=model_name,  # Use specific model name for individual tracking
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
@@ -208,12 +219,23 @@ def track_token_usage(model_family: str, input_tokens: int, output_tokens: int, 
         user_agent=user_agent
     )
     
+    # Debug: Print token counts after tracking
+    print(f"🔍 TRACKING: User {token[:8]} after tracking {model_name}:")
+    if hasattr(user, 'token_counts') and user.token_counts:
+        for family, count in user.token_counts.items():
+            print(f"🔍 TRACKING: {family}: {count.total} total, {count.requests} requests, {count.input} input, {count.output} output")
+    else:
+        print(f"🔍 TRACKING: No token_counts found for user {token[:8]}")
+    
+    # Record successful prompt for happiness tracking
+    user.record_successful_prompt()
+    
     # Also use the new structured event logger
     from ..services.firebase_logger import structured_logger
     structured_logger.log_chat_completion(
         user_token=token,
         model_family=model_family,
-        model_name=f"{model_family}-model",
+        model_name=model_name,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=cost,
@@ -223,8 +245,14 @@ def track_token_usage(model_family: str, input_tokens: int, output_tokens: int, 
         user_agent=user_agent
     )
     
-    # Mark user for Firebase sync
+    # Mark user for Firebase sync (immediate flush for token usage)
     user_store.flush_queue.add(token)
+    
+    # Also do immediate flush for token usage to ensure persistence
+    try:
+        user_store._flush_to_firebase(token)
+    except Exception as e:
+        print(f"⚠️ WARNING: Immediate flush failed for token usage, will retry in cleanup cycle: {e}")
 
 def require_admin_session(f):
     """Decorator to require admin session authentication for web interface"""
