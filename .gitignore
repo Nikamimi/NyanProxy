@@ -112,6 +112,7 @@ run.cmd
 *.cmd
 *.bat
 !start.bat
+kill-port-7860.bat
 
 # Windows system files
 nul
@@ -150,6 +151,7 @@ server_control.bat
 server_config.txt
 digitalocean.md
 kill-port-7860.bat
+FastAPIMigrationPlan.txt
 
 # Screenshots and images
 *.png
@@ -158,3 +160,6 @@ kill-port-7860.bat
 *.gif
 *.bmp
 *.webp
+
+# Development and testing files (archived)
+.archive/

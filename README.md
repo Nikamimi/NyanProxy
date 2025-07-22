@@ -49,8 +49,9 @@ A sophisticated AI proxy service that provides unified access to multiple AI pro
 - **🧬 Dynamic Model Management**: Add/remove AI models via admin interface without code changes
 - **🔥 Firebase-Powered**: Persistent logging and user management
 - **🤖 Multi-Provider Support**: OpenAI, Anthropic, Google, Mistral, Groq, Cohere
+- **🔄 Enhanced Retry Logic**: Intelligent key management with automatic failure recovery
+- **🛡️ Smart Key Health Monitoring**: Real-time API key validation and removal
 - **📊 Advanced Analytics**: Real-time usage tracking and cost analysis
-- **🛡️ Smart Rate Limiting**: Automatic key rotation and health monitoring
 - **👥 User Management**: Individual user tokens with quotas and permissions
 - **🎯 Model Whitelisting**: Secure whitelist-only model access
 - **📱 Beautiful Admin Dashboard**: Web interface for monitoring and management
@@ -60,7 +61,10 @@ A sophisticated AI proxy service that provides unified access to multiple AI pro
 
 ### 📖 Detailed Guides
 - **[🧬 Model Management](docs/model-management.md)** - Add/configure AI models dynamically
-- **[🔐 Authentication Setup](AUTHENTICATION.md)** - User management and authentication modes
+- **[🔐 Authentication Setup](docs/AUTHENTICATION.md)** - User management and authentication modes
+- **[🔄 AI Key Management](docs/AI_KEY_MANAGEMENT_README.md)** - Enhanced retry logic and key health monitoring
+- **[💬 Conversation Logging](docs/CONVERSATION_LOGGING.md)** - Privacy-focused usage tracking
+- **[🔧 Integration Guide](docs/INTEGRATION_STEPS.md)** - Step-by-step implementation details
 
 ### 🎯 Quick Links
 - **[💡 Usage Examples](#-usage-examples)** - API integration examples
@@ -131,6 +135,9 @@ A sophisticated AI proxy service that provides unified access to multiple AI pro
    # Optional: Authentication
    AUTH_MODE=user_token
    FLASK_SECRET_KEY=your-secure-secret-key
+   
+   # Optional: Retry Configuration
+   MAX_RETRIES=3
    ```
 
 3. **Install dependencies**:
@@ -144,6 +151,37 @@ A sophisticated AI proxy service that provides unified access to multiple AI pro
    # or for Windows:
    start.bat
    ```
+
+## 🔄 Enhanced Retry Logic & Key Management
+
+NyanProxy features an intelligent retry system that automatically handles API key failures:
+
+### **Automatic Key Health Monitoring**
+- **Real-time validation**: Continuous monitoring of API key health
+- **Provider-specific error handling**: Different rules for OpenAI, Anthropic, and Google
+- **Intelligent key removal**: Invalid and quota-exceeded keys are permanently removed
+
+### **Smart Retry Behavior**
+- **Different keys per retry**: Each retry attempt uses a different API key
+- **Permanent key removal**: Invalid keys are immediately removed from the pool
+- **Provider-specific classification**:
+  - **OpenAI**: 401=Invalid, 429=Quota Exceeded (both removed)
+  - **Anthropic**: 401=Invalid, 429=Rate Limited (kept), 403=Quota Exceeded (removed)
+  - **Google**: 403=Invalid (removed), 429=Rate Limited (kept)
+
+### **Dashboard Integration**
+- **Live key status**: See healthy, rate limited, invalid, and quota exceeded counts
+- **Key identification**: Shows first 8 and last 4 characters for easy identification
+- **Real-time updates**: Dashboard reflects current key pool status
+
+### **Configuration**
+```bash
+# Set maximum retry attempts (default: 3)
+MAX_RETRIES=3
+
+# Multiple keys for automatic failover
+ANTHROPIC_API_KEYS=sk-ant-key1,sk-ant-key2,sk-ant-key3
+```
 
 ## 🚀 API Endpoints
 

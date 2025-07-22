@@ -9,7 +9,7 @@ import hashlib
 import psutil
 import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List
+from typing import Dict, List, Any
 from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -627,44 +627,54 @@ class APIKeyManager:
         # Use managed daemon thread
         thread_manager.create_daemon_thread(check_all_keys, "health_check_runner")
     
-    def _classify_error(self, status_code: int, error_message: str) -> tuple:
-        """Classify error type and return (error_type, is_retryable)"""
+    def _classify_error(self, service: str, status_code: int, error_message: str) -> tuple:
+        """Classify error type per your specifications"""
         error_msg_lower = error_message.lower()
         
-        # Authentication errors (not retryable with same key)
-        if status_code in [401, 403]:
-            return 'invalid_key', False
+        if service == 'openai':
+            # OpenAI: 401=Invalid, 429=Quota Exceeded
+            if status_code == 401:
+                return 'invalid_key', False  # Permanently remove
+            elif status_code == 429:
+                return 'quota_exceeded', False  # Permanently remove
+                
+        elif service == 'anthropic':
+            # Anthropic: 401=Invalid, 429=Rate Limited, 403=Quota Exceeded
+            if status_code == 401:
+                return 'invalid_key', False  # Permanently remove
+            elif status_code == 429:
+                return 'rate_limited', True  # Keep in pool, temporary
+            elif status_code == 403:
+                return 'quota_exceeded', False  # Permanently remove
+                
+        elif service == 'google':
+            # Google: 403=Invalid, 429=Rate Limited
+            if status_code == 403:
+                return 'invalid_key', False  # Permanently remove
+            elif status_code == 429:
+                return 'rate_limited', True  # Keep in pool, temporary
         
-        # Rate limiting (retryable)
-        if status_code == 429:
-            return 'rate_limited', True
-        
-        # Quota/billing issues
+        # Fallback logic for other errors
         quota_indicators = ['quota exceeded', 'billing', 'insufficient_quota', 'usage limit']
         if any(indicator in error_msg_lower for indicator in quota_indicators):
             return 'quota_exceeded', False
         
-        # Rate limit indicators in message
-        rate_limit_indicators = [
-            'rate limit', 'too many requests', 'rate_limit_exceeded',
-            'requests per minute', 'rpm', 'tpm'
-        ]
+        rate_limit_indicators = ['rate limit', 'too many requests', 'rate_limit_exceeded']
         if any(indicator in error_msg_lower for indicator in rate_limit_indicators):
             return 'rate_limited', True
         
-        # Server errors (potentially retryable)
         if status_code >= 500:
             return 'server_error', True
         
-        # Other client errors
         if status_code >= 400:
             return 'client_error', False
         
         return 'unknown_error', False
     
-    def get_api_key(self, service: str, exclude_failed: bool = True) -> str:
+    def get_api_key(self, service: str, exclude_failed: bool = True, exclude_key: str = None) -> str:
         """Get next available API key for the service with rate limit handling"""
         if service not in self.api_keys or not self.api_keys[service]:
+            print(f"⚠️ No API keys available for {service}")
             return None
         
         available_keys = [key for key in self.api_keys[service] if key]
@@ -673,10 +683,16 @@ class APIKeyManager:
         if exclude_failed:
             available_keys = [key for key in available_keys if key not in self.failed_keys]
         
+        # Exclude specific key (for retry with different key)
+        if exclude_key:
+            available_keys = [key for key in available_keys if key != exclude_key]
+        
         if not available_keys:
-            # If all keys failed, try again with failed keys (maybe they recovered)
+            # If all keys failed, try again with failed keys (but still exclude the specific key)
             if exclude_failed:
-                return self.get_api_key(service, exclude_failed=False)
+                print(f"🔄 All {service} keys failed, trying with failed keys...")
+                return self.get_api_key(service, exclude_failed=False, exclude_key=exclude_key)
+            print(f"❌ No available keys for {service}")
             return None
         
         # Simple round-robin selection
@@ -684,9 +700,11 @@ class APIKeyManager:
             self.key_usage[service] = 0
         
         key_index = self.key_usage[service] % len(available_keys)
+        selected_key = available_keys[key_index]
         self.key_usage[service] += 1
         
-        return available_keys[key_index]
+        print(f"🔑 Selected key {selected_key[:8]}...{selected_key[-4:]} for {service} ({key_index + 1}/{len(available_keys)} available)")
+        return selected_key
     
     def update_key_health(self, key: str, success: bool, status_code: int = None, error_message: str = None):
         """Update key health status based on API response"""
@@ -720,7 +738,9 @@ class APIKeyManager:
                 health['consecutive_failures'] += 1
                 
                 if status_code and error_message:
-                    error_type, is_retryable = self._classify_error(status_code, error_message)
+                    # We need service info for proper classification
+                    # For now use generic classification, will be improved in handle_api_error
+                    error_type, is_retryable = self._classify_error('unknown', status_code, error_message)
                     health['error_type'] = error_type
                     health['status'] = error_type
                     health['last_error'] = error_message
@@ -740,14 +760,54 @@ class APIKeyManager:
         # Auto-recovery after some time (simplified)
         threading.Timer(300, lambda: self.failed_keys.discard(key)).start()
     
+    def permanently_remove_key(self, service: str, key: str, reason: str):
+        """Permanently remove a key from the available pool"""
+        with self.lock:
+            if service in self.api_keys and key in self.api_keys[service]:
+                # Remove from active keys
+                self.api_keys[service].remove(key)
+                
+                # Track removed key for stats
+                if not hasattr(self, 'removed_keys'):
+                    self.removed_keys = {}
+                if service not in self.removed_keys:
+                    self.removed_keys[service] = []
+                
+                self.removed_keys[service].append({
+                    'key': key[:8] + "..." + key[-4:],
+                    'reason': reason,
+                    'removed_at': time.time()
+                })
+                
+                # Also remove from failed keys set
+                self.failed_keys.discard(key)
+                
+                print(f"🗑️ PERMANENTLY REMOVED key {key[:8]}...{key[-4:]} from {service} pool (reason: {reason})")
+                print(f"🔑 {service} pool now has {len(self.api_keys[service])} keys remaining")
+    
     def handle_api_error(self, service: str, key: str, error_message: str, status_code: int = None) -> bool:
         """Handle API error and return True if should retry with different key"""
+        print(f"🔴 API Error for {service}: {status_code} - {error_message}")
+        
         # Update key health with failure
         self.update_key_health(key, False, status_code, error_message)
         
         # Check if error is retryable
         if status_code and error_message:
-            error_type, is_retryable = self._classify_error(status_code, error_message)
+            error_type, is_retryable = self._classify_error(service, status_code, error_message)
+            print(f"🔍 Error classified as: {error_type}, retryable: {is_retryable}")
+            
+            # Handle permanent failures - remove from key pool entirely
+            if error_type in ['invalid_key', 'quota_exceeded']:
+                self.permanently_remove_key(service, key, error_type)
+                return True  # Still retryable with different key
+            
+            # Handle temporary failures - add to failed keys set
+            elif error_type in ['rate_limited', 'server_error']:
+                print(f"🟡 Temporarily marking {key[:8]}...{key[-4:]} as failed for {service}")
+                self.failed_keys.add(key)
+                return True
+            
             return is_retryable
         
         # Legacy fallback for rate limiting
@@ -760,6 +820,85 @@ class APIKeyManager:
             return True
         
         return False
+    
+    def get_key_health_stats(self, service: str = None) -> Dict[str, Any]:
+        """Get key health statistics for dashboard display"""
+        with self.lock:
+            if service:
+                # Stats for specific service
+                if service not in self.api_keys:
+                    return {
+                        'healthy': 0,
+                        'rate_limited': 0,
+                        'invalid_key': 0,
+                        'quota_exceeded': 0,
+                        'unknown': 0,
+                        'avg_response_time': '0.00'
+                    }
+                
+                stats = {
+                    'healthy': 0,
+                    'rate_limited': 0, 
+                    'invalid_key': 0,
+                    'quota_exceeded': 0,
+                    'unknown': 0,
+                    'total_response_time': 0.0,
+                    'response_count': 0
+                }
+                
+                # Count keys by health status
+                for key in self.api_keys[service]:
+                    if key in self.key_health:
+                        health = self.key_health[key]
+                        status = health.get('status', 'unknown')
+                        
+                        if status == 'healthy':
+                            stats['healthy'] += 1
+                        elif status in ['rate_limited', 'rate_limited_temporary']:
+                            stats['rate_limited'] += 1
+                        elif status in ['invalid_key', 'invalid']:
+                            stats['invalid_key'] += 1
+                        elif status in ['quota_exceeded', 'quota']:
+                            stats['quota_exceeded'] += 1
+                        else:
+                            stats['unknown'] += 1
+                        
+                        # Accumulate response times for average
+                        if health.get('last_response_time'):
+                            stats['total_response_time'] += health['last_response_time']
+                            stats['response_count'] += 1
+                    else:
+                        # Key not health checked yet
+                        stats['healthy'] += 1
+                
+                # Add removed keys to the appropriate categories
+                if hasattr(self, 'removed_keys') and service in self.removed_keys:
+                    for removed_key in self.removed_keys[service]:
+                        reason = removed_key['reason']
+                        if reason == 'invalid_key':
+                            stats['invalid_key'] += 1
+                        elif reason == 'quota_exceeded':
+                            stats['quota_exceeded'] += 1
+                
+                # Calculate average response time
+                if stats['response_count'] > 0:
+                    avg_response_time = stats['total_response_time'] / stats['response_count']
+                    stats['avg_response_time'] = f"{avg_response_time:.2f}"
+                else:
+                    stats['avg_response_time'] = '0.00'
+                
+                # Remove internal calculation fields
+                del stats['total_response_time']
+                del stats['response_count']
+                
+                return stats
+            
+            else:
+                # Stats for all services
+                all_stats = {}
+                for svc in self.api_keys.keys():
+                    all_stats[svc] = self.get_key_health_stats(svc)
+                return all_stats
 
 key_manager = APIKeyManager()
 metrics = MetricsTracker()
@@ -882,7 +1021,7 @@ def health_check():
 def openai_chat_completions():
     """Proxy OpenAI chat completions with rate limit handling"""
     start_time = time.time()
-    max_retries = 3
+    max_retries = int(os.getenv('MAX_RETRIES', '3'))
     
     # Track IP for current prompter count
     client_ip = get_client_ip()
@@ -968,11 +1107,20 @@ def openai_chat_completions():
             metrics.track_request('chat_completions', time.time() - start_time, error=True)
             return jsonify({"error": {"message": error_message, "type": "token_limit_exceeded"}}), 400
     
+    used_keys = []
+    
     for attempt in range(max_retries):
-        api_key = key_manager.get_api_key('openai')
+        # Get API key, excluding previously used keys
+        exclude_key = used_keys[-1] if used_keys else None
+        api_key = key_manager.get_api_key('openai', exclude_key=exclude_key)
+        
         if not api_key:
+            print(f"❌ No API keys available for OpenAI on attempt {attempt + 1}")
             metrics.track_request('chat_completions', time.time() - start_time, error=True)
             return jsonify({"error": "No OpenAI API key configured"}), 500
+        
+        used_keys.append(api_key)
+        print(f"🔄 Attempt {attempt + 1}/{max_retries} using key {api_key[:8]}...{api_key[-4:]}")
         
         headers = {
             'Authorization': f'Bearer {api_key}',
@@ -1000,6 +1148,8 @@ def openai_chat_completions():
                         continue
             else:
                 # Success - update key health
+                print(f"✅ OpenAI API call successful on attempt {attempt + 1}")
+                print(f"🔑 Keys tried: {[k[:8] + '...' + k[-4:] for k in used_keys]}")
                 key_manager.update_key_health(api_key, True)
             
             # Extract token information from response
@@ -1792,22 +1942,10 @@ def dashboard():
             'count': len([k for k in keys if k and k.strip()])
         }
         
+        # 🚀 NEW: Use enhanced key health stats method
+        service_health = key_manager.get_key_health_stats(service)
         
-        # Get health status for this service
-        service_health = {
-            'healthy': 0,
-            'rate_limited': 0,
-            'invalid_key': 0,
-            'quota_exceeded': 0,
-            'unknown': 0,
-            'failed': 0,
-            'key_details': [],
-            'successful_requests': 0,
-            'total_tokens': 0,
-            'avg_response_time': '0.00'
-        }
-        
-        # Get metrics data for this service
+        # Get metrics data for this service  
         if service in metrics_data['service_tokens']:
             service_metrics = metrics_data['service_tokens'][service]
             service_health['successful_requests'] = service_metrics['successful_requests']
@@ -1817,32 +1955,33 @@ def dashboard():
             if service_metrics['response_times']:
                 avg_time = sum(service_metrics['response_times']) / len(service_metrics['response_times'])
                 service_health['avg_response_time'] = f"{avg_time:.2f}"
+            else:
+                service_health['avg_response_time'] = '0.00'
+        else:
+            # Add missing metrics data
+            service_health['successful_requests'] = 0
+            service_health['total_tokens'] = 0
+            service_health['avg_response_time'] = '0.00'
         
+        # Add key details for debugging
+        service_health['key_details'] = []
         with key_manager.lock:
             for key in keys:
                 if key and key in key_manager.key_health:
                     health = key_manager.key_health[key]
-                    status = health['status']
-                    
-                    
-                    # Count by status
-                    if status in service_health:
-                        service_health[status] += 1
-                    else:
-                        service_health['failed'] += 1
-                    
-                    # Add key details (masked for security)
-                    masked_key = key[:8] + '...' if len(key) > 8 else key
+                    masked_key = key[:8] + '...' + key[-4:] if len(key) > 12 else key
                     service_health['key_details'].append({
                         'key': masked_key,
-                        'status': status,
+                        'status': health['status'],
                         'last_success': health['last_success'].strftime('%Y-%m-%d %H:%M:%S') if health['last_success'] else 'Never',
                         'last_failure': health['last_failure'].strftime('%Y-%m-%d %H:%M:%S') if health['last_failure'] else 'Never',
                         'consecutive_failures': health['consecutive_failures'],
                         'error_type': health['error_type']
                     })
-                else:
-                    service_health['unknown'] += 1
+        
+        # Add removed keys count for debugging
+        removed_count = len(getattr(key_manager, 'removed_keys', {}).get(service, []))
+        service_health['removed_keys_count'] = removed_count
         
         key_health_data[service] = service_health
     
@@ -1946,7 +2085,7 @@ def anthropic_messages():
     """Proxy Anthropic messages with token tracking"""
     # Anthropic endpoint called
     start_time = time.time()
-    max_retries = 3
+    max_retries = int(os.getenv('MAX_RETRIES', '3'))
     
     # Track IP for current prompter count
     client_ip = get_client_ip()
@@ -1992,11 +2131,20 @@ def anthropic_messages():
             metrics.track_request('chat_completions', time.time() - start_time, error=True)
             return jsonify({"error": {"message": error_message, "type": "token_limit_exceeded"}}), 400
     
+    used_keys = []
+    
     for attempt in range(max_retries):
-        api_key = key_manager.get_api_key('anthropic')
+        # Get API key, excluding previously used keys
+        exclude_key = used_keys[-1] if used_keys else None
+        api_key = key_manager.get_api_key('anthropic', exclude_key=exclude_key)
+        
         if not api_key:
+            print(f"❌ No API keys available for Anthropic on attempt {attempt + 1}")
             metrics.track_request('chat_completions', time.time() - start_time, error=True)
             return jsonify({"error": "No Anthropic API key configured"}), 500
+        
+        used_keys.append(api_key)
+        print(f"🔄 Attempt {attempt + 1}/{max_retries} using key {api_key[:8]}...{api_key[-4:]}")
         
         headers = {
             'x-api-key': api_key,
@@ -2033,6 +2181,8 @@ def anthropic_messages():
                         return jsonify({"error": {"message": error_text, "type": "anthropic_api_error"}}), response.status_code
             else:
                 # Success - update key health
+                print(f"✅ Anthropic API call successful on attempt {attempt + 1}")
+                print(f"🔑 Keys tried: {[k[:8] + '...' + k[-4:] for k in used_keys]}")
                 key_manager.update_key_health(api_key, True)
             
             # Extract token information from response

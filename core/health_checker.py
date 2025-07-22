@@ -95,19 +95,15 @@ class OpenAIHealthChecker(BaseHealthChecker):
             )
     
     def classify_error(self, status_code: int, error_message: str) -> Tuple[str, bool]:
-        """Classify OpenAI error types"""
+        """Classify OpenAI error types according to requirements"""
         error_msg_lower = error_message.lower()
         
-        # Authentication errors (permanent)
-        if status_code in [401, 403]:
+        # 401 = Invalid (permanent)
+        if status_code == 401:
             return 'invalid_key', False
         
-        # Rate limiting (temporary)
+        # 429 = Quota Exceeded (permanent)
         if status_code == 429:
-            return 'rate_limited', True
-        
-        # Quota/billing issues (permanent until resolved)
-        if status_code == 402:
             return 'quota_exceeded', False
         
         # Check for quota-related messages
@@ -125,11 +121,11 @@ class OpenAIHealthChecker(BaseHealthChecker):
         if status_code >= 500:
             return 'server_error', True
         
-        # Other client errors (permanent)
+        # Other client errors (keep in pool)
         if status_code >= 400:
-            return 'client_error', False
+            return 'client_error', True
         
-        return 'unknown_error', False
+        return 'unknown_error', True
 
 
 class AnthropicHealthChecker(BaseHealthChecker):
@@ -195,19 +191,19 @@ class AnthropicHealthChecker(BaseHealthChecker):
             )
     
     def classify_error(self, status_code: int, error_message: str) -> Tuple[str, bool]:
-        """Classify Anthropic error types"""
+        """Classify Anthropic error types according to requirements"""
         error_msg_lower = error_message.lower()
         
-        # Authentication errors (permanent)
-        if status_code in [401, 403]:
+        # 401 = Invalid (permanent)
+        if status_code == 401:
             return 'invalid_key', False
         
-        # Rate limiting (temporary)
+        # 429 = Rate-Limited (keep in pool, temporary)
         if status_code == 429:
             return 'rate_limited', True
         
-        # Quota/billing issues (permanent until resolved)
-        if status_code == 402:
+        # 403 = Quota Exceeded (permanent)
+        if status_code == 403:
             return 'quota_exceeded', False
         
         # Check for quota-related messages
@@ -225,11 +221,11 @@ class AnthropicHealthChecker(BaseHealthChecker):
         if status_code >= 500:
             return 'server_error', True
         
-        # Other client errors (permanent)
+        # Other client errors (keep in pool)
         if status_code >= 400:
-            return 'client_error', False
+            return 'client_error', True
         
-        return 'unknown_error', False
+        return 'unknown_error', True
 
 
 class HealthCheckManager:
@@ -353,22 +349,28 @@ class GoogleHealthChecker(BaseHealthChecker):
             )
     
     def classify_error(self, status_code: int, error_message: str) -> Tuple[str, bool]:
-        """Classify Google error types"""
+        """Classify Google error types according to requirements"""
         error_msg_lower = error_message.lower()
         
-        if status_code in [401, 403]:
+        # 403 = Invalid (permanent)
+        if status_code == 403:
             return 'invalid_key', False
+        
+        # 429 = Rate-Limited (keep in pool, temporary)
         if status_code == 429:
             return 'rate_limited', True
-        if status_code == 402:
-            return 'quota_exceeded', False
-        if 'quota exceeded' in error_msg_lower or 'billing' in error_msg_lower:
-            return 'quota_exceeded', False
+        
+        # No Quota Exceeded for Google according to requirements
+        
+        # Server errors (potentially retryable)
         if status_code >= 500:
             return 'server_error', True
+        
+        # Other client errors (keep in pool)
         if status_code >= 400:
-            return 'client_error', False
-        return 'unknown_error', False
+            return 'client_error', True
+        
+        return 'unknown_error', True
 
 
 class MistralHealthChecker(BaseHealthChecker):
