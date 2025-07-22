@@ -163,3 +163,6 @@ FastAPIMigrationPlan.txt
 
 # Development and testing files (archived)
 .archive/
+
+# Claude Code project instructions (sensitive)
+CLAUDE.md
