@@ -200,31 +200,31 @@ def disable_user(token: str):
     data = request.get_json() or {}
     reason = data.get('reason', 'Disabled by admin')
     
-    print(f"🐱 DEBUG disable_user API: Disabling user {token[:8]} with reason '{reason}'")
+    print(f"[CAT] DEBUG disable_user API: Disabling user {token[:8]} with reason '{reason}'")
     
     # Check user state before disabling
     user_before = user_store.get_user(token)
     if not user_before:
-        print(f"🚫 DEBUG disable_user API: User {token[:8]} not found")
+        print(f"[ERROR] DEBUG disable_user API: User {token[:8]} not found")
         return jsonify({'error': 'User not found'}), 404
     
-    print(f"🐱 DEBUG disable_user API: User {token[:8]} before - disabled_at: {user_before.disabled_at}")
+    print(f"[CAT] DEBUG disable_user API: User {token[:8]} before - disabled_at: {user_before.disabled_at}")
     
     success = user_store.disable_user(token, reason)
     
     if not success:
-        print(f"🚫 DEBUG disable_user API: Failed to disable user {token[:8]}")
+        print(f"[ERROR] DEBUG disable_user API: Failed to disable user {token[:8]}")
         return jsonify({'error': 'User not found'}), 404
     
     # Check user state after disabling
     user_after = user_store.get_user(token)
-    print(f"🔍 ADMIN DISABLE: After disable_user call:")
-    print(f"🔍 ADMIN DISABLE: User {token[:8]} disabled_at: {user_after.disabled_at}")
-    print(f"🔍 ADMIN DISABLE: User {token[:8]} disabled_reason: {user_after.disabled_reason}")
-    print(f"🔍 ADMIN DISABLE: User {token[:8]} status: {getattr(user_after, 'status', 'not set')}")
-    print(f"🔍 ADMIN DISABLE: User {token[:8]} is_disabled(): {user_after.is_disabled()}")
-    print(f"🔍 ADMIN DISABLE: User {token[:8]} to_dict status: {user_after.to_dict().get('status')}")
-    print(f"🐱 DEBUG disable_user API: User {token[:8]} after - disabled_at: {user_after.disabled_at}, reason: {user_after.disabled_reason}")
+    print(f"[SEARCH] ADMIN DISABLE: After disable_user call:")
+    print(f"[SEARCH] ADMIN DISABLE: User {token[:8]} disabled_at: {user_after.disabled_at}")
+    print(f"[SEARCH] ADMIN DISABLE: User {token[:8]} disabled_reason: {user_after.disabled_reason}")
+    print(f"[SEARCH] ADMIN DISABLE: User {token[:8]} status: {getattr(user_after, 'status', 'not set')}")
+    print(f"[SEARCH] ADMIN DISABLE: User {token[:8]} is_disabled(): {user_after.is_disabled()}")
+    print(f"[SEARCH] ADMIN DISABLE: User {token[:8]} to_dict status: {user_after.to_dict().get('status')}")
+    print(f"[CAT] DEBUG disable_user API: User {token[:8]} after - disabled_at: {user_after.disabled_at}, reason: {user_after.disabled_reason}")
     
     # Log admin action
     structured_logger.log_user_action(
@@ -252,30 +252,30 @@ def disable_user(token: str):
 @require_admin_auth_or_session
 def enable_user(token: str):
     """Enable/unban a user"""
-    print(f"🐱 DEBUG enable_user API: Enabling user {token[:8]}")
+    print(f"[CAT] DEBUG enable_user API: Enabling user {token[:8]}")
     
     # Check user state before enabling
     user_before = user_store.get_user(token)
     if not user_before:
-        print(f"🚫 DEBUG enable_user API: User {token[:8]} not found")
+        print(f"[ERROR] DEBUG enable_user API: User {token[:8]} not found")
         return jsonify({'error': 'User not found'}), 404
     
-    print(f"🐱 DEBUG enable_user API: User {token[:8]} before - disabled_at: {user_before.disabled_at}, reason: {user_before.disabled_reason}")
+    print(f"[CAT] DEBUG enable_user API: User {token[:8]} before - disabled_at: {user_before.disabled_at}, reason: {user_before.disabled_reason}")
     
     success = user_store.reactivate_user(token)
     
     if not success:
-        print(f"🚫 DEBUG enable_user API: Failed to enable user {token[:8]}")
+        print(f"[ERROR] DEBUG enable_user API: Failed to enable user {token[:8]}")
         return jsonify({'error': 'User not found'}), 404
     
     # Check user state after enabling
     user_after = user_store.get_user(token)
-    print(f"🐱 DEBUG enable_user API: User {token[:8]} after - disabled_at: {user_after.disabled_at}, reason: {user_after.disabled_reason}")
-    print(f"🐱 DEBUG enable_user API: User {token[:8]} is_disabled() returns: {user_after.is_disabled()}")
+    print(f"[CAT] DEBUG enable_user API: User {token[:8]} after - disabled_at: {user_after.disabled_at}, reason: {user_after.disabled_reason}")
+    print(f"[CAT] DEBUG enable_user API: User {token[:8]} is_disabled() returns: {user_after.is_disabled()}")
     
     # Verify the user is actually enabled
     if user_after.is_disabled():
-        print(f"🚫 ERROR: User {token[:8]} should be enabled but is_disabled() still returns True!")
+        print(f"[ERROR] ERROR: User {token[:8]} should be enabled but is_disabled() still returns True!")
         return jsonify({'error': 'Failed to enable user - state not updated'}), 500
     
     # Log admin action
@@ -429,37 +429,37 @@ def bulk_migrate_status():
     from ..services.user_store import UserStatus
     migrated_count = 0
     
-    print(f"🔄 BULK MIGRATION: Starting migration for {len(user_store.users)} users")
+    print(f"[RETRY] BULK MIGRATION: Starting migration for {len(user_store.users)} users")
     
     for token, user in user_store.users.items():
-        print(f"🔄 BULK MIGRATION: Checking user {token[:8]} - disabled_at: {user.disabled_at}, status: {getattr(user, 'status', 'not set')}")
+        print(f"[RETRY] BULK MIGRATION: Checking user {token[:8]} - disabled_at: {user.disabled_at}, status: {getattr(user, 'status', 'not set')}")
         
         # Always ensure status field exists and is correct
         if not hasattr(user, 'status') or user.status is None:
-            print(f"🔄 BULK MIGRATION: User {token[:8]} missing status field")
+            print(f"[RETRY] BULK MIGRATION: User {token[:8]} missing status field")
             if user.disabled_at:
                 user.status = UserStatus.DISABLED
-                print(f"🔄 BULK MIGRATION: Set user {token[:8]} status to DISABLED")
+                print(f"[RETRY] BULK MIGRATION: Set user {token[:8]} status to DISABLED")
             else:
                 user.status = UserStatus.ACTIVE
-                print(f"🔄 BULK MIGRATION: Set user {token[:8]} status to ACTIVE")
+                print(f"[RETRY] BULK MIGRATION: Set user {token[:8]} status to ACTIVE")
             migrated_count += 1
         else:
             # Check if status is inconsistent with disabled_at and fix
             if user.disabled_at and user.status == UserStatus.ACTIVE:
-                print(f"🔄 BULK MIGRATION: User {token[:8]} inconsistent - disabled but status is ACTIVE")
+                print(f"[RETRY] BULK MIGRATION: User {token[:8]} inconsistent - disabled but status is ACTIVE")
                 user.status = UserStatus.DISABLED
                 migrated_count += 1
             elif not user.disabled_at and user.status != UserStatus.ACTIVE:
-                print(f"🔄 BULK MIGRATION: User {token[:8]} inconsistent - not disabled but status is {user.status}")
+                print(f"[RETRY] BULK MIGRATION: User {token[:8]} inconsistent - not disabled but status is {user.status}")
                 user.status = UserStatus.ACTIVE
                 migrated_count += 1
         
         # Force immediate flush to Firebase for this user
-        print(f"🔄 BULK MIGRATION: Force flushing user {token[:8]} to Firebase")
+        print(f"[RETRY] BULK MIGRATION: Force flushing user {token[:8]} to Firebase")
         user_store._flush_to_firebase(token)
     
-    print(f"🔄 BULK MIGRATION: Completed migration of {migrated_count} users")
+    print(f"[RETRY] BULK MIGRATION: Completed migration of {migrated_count} users")
     
     return jsonify({
         'success': True,
@@ -472,16 +472,16 @@ def bulk_migrate_status():
 @require_admin_auth
 def debug_user_state(token: str):
     """Debug user state in memory vs Firebase"""
-    print(f"🔍 DEBUG ENDPOINT: Checking user {token[:8]} state")
+    print(f"[SEARCH] DEBUG ENDPOINT: Checking user {token[:8]} state")
     
     # Get user from memory
     memory_user = user_store.get_user(token)
     if not memory_user:
         return jsonify({'error': 'User not found in memory'}), 404
     
-    print(f"🔍 DEBUG ENDPOINT: Memory user {token[:8]} status: {getattr(memory_user, 'status', 'not set')}")
-    print(f"🔍 DEBUG ENDPOINT: Memory user {token[:8]} disabled_at: {memory_user.disabled_at}")
-    print(f"🔍 DEBUG ENDPOINT: Memory user {token[:8]} is_disabled(): {memory_user.is_disabled()}")
+    print(f"[SEARCH] DEBUG ENDPOINT: Memory user {token[:8]} status: {getattr(memory_user, 'status', 'not set')}")
+    print(f"[SEARCH] DEBUG ENDPOINT: Memory user {token[:8]} disabled_at: {memory_user.disabled_at}")
+    print(f"[SEARCH] DEBUG ENDPOINT: Memory user {token[:8]} is_disabled(): {memory_user.is_disabled()}")
     
     # Get user from Firebase
     firebase_user_data = None
@@ -489,8 +489,8 @@ def debug_user_state(token: str):
         try:
             sanitized_token = user_store._sanitize_firebase_key(token)
             firebase_user_data = user_store.firebase_db.child('users').child(sanitized_token).get()
-            print(f"🔍 DEBUG ENDPOINT: Firebase user {token[:8]} status: {firebase_user_data.get('status') if firebase_user_data else 'no data'}")
-            print(f"🔍 DEBUG ENDPOINT: Firebase user {token[:8]} disabled_at: {firebase_user_data.get('disabled_at') if firebase_user_data else 'no data'}")
+            print(f"[SEARCH] DEBUG ENDPOINT: Firebase user {token[:8]} status: {firebase_user_data.get('status') if firebase_user_data else 'no data'}")
+            print(f"[SEARCH] DEBUG ENDPOINT: Firebase user {token[:8]} disabled_at: {firebase_user_data.get('disabled_at') if firebase_user_data else 'no data'}")
         except Exception as e:
             firebase_user_data = f"Error: {e}"
     

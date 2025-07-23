@@ -59,7 +59,7 @@ def login():
     
     dashboard_config = {
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     return render_template('admin/login.html', config=dashboard_config)
@@ -113,9 +113,9 @@ def dashboard():
         users_data.append(user_data)
     
     dashboard_config = {
-        'title': f"{os.getenv('BRAND_EMOJI', '🐱')} {os.getenv('DASHBOARD_TITLE', 'NyanProxy Admin')}",
+        'title': f"{os.getenv('BRAND_EMOJI', '[CAT]')} {os.getenv('DASHBOARD_TITLE', 'NyanProxy Admin')}",
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     return render_template('admin/dashboard.html',
@@ -136,7 +136,7 @@ def list_users():
         user_type = request.args.get('type')
         search = request.args.get('search', '').lower()
         
-        print(f"🐱 DEBUG list_users: page={page}, limit={limit}, type={user_type}, search='{search}'")
+        print(f"[CAT] DEBUG list_users: page={page}, limit={limit}, type={user_type}, search='{search}'")
         
         # Validate pagination parameters
         if page < 1:
@@ -145,7 +145,7 @@ def list_users():
             limit = 25
         
         all_users = user_store.get_all_users()
-        print(f"🐱 DEBUG: Found {len(all_users)} total users")
+        print(f"[CAT] DEBUG: Found {len(all_users)} total users")
         
         # Apply filters with error handling
         filtered_users = []
@@ -155,16 +155,16 @@ def list_users():
                 try:
                     if hasattr(user, 'validate_and_fix_data_integrity'):
                         if user.validate_and_fix_data_integrity():
-                            print(f"🔧 DEBUG: Fixed data integrity issues for user {user.token[:8] if hasattr(user, 'token') else i}")
+                            print(f"[TOOL] DEBUG: Fixed data integrity issues for user {user.token[:8] if hasattr(user, 'token') else i}")
                             # Queue for Firebase update if fixes were made
                             with user_store.flush_queue_lock:
                                 user_store.flush_queue.add(user.token)
                 except Exception as e:
-                    print(f"🚫 DEBUG: Error validating user {i}: {e}")
+                    print(f"[ERROR] DEBUG: Error validating user {i}: {e}")
                 
                 # Ensure user has required attributes
                 if not hasattr(user, 'type') or not hasattr(user, 'token'):
-                    print(f"🚫 DEBUG: User {i} missing required attributes, skipping")
+                    print(f"[ERROR] DEBUG: User {i} missing required attributes, skipping")
                     continue
                 
                 # Type filter
@@ -182,7 +182,7 @@ def list_users():
                         elif user.disabled_reason and search in user.disabled_reason.lower():
                             search_matches = True
                     except Exception as e:
-                        print(f"🚫 DEBUG: Error searching user {user.token[:8]}: {e}")
+                        print(f"[ERROR] DEBUG: Error searching user {user.token[:8]}: {e}")
                         continue
                     
                     if search_matches:
@@ -191,17 +191,17 @@ def list_users():
                     filtered_users.append(user)
                     
             except Exception as e:
-                print(f"🚫 DEBUG: Error processing user {i}: {e}")
+                print(f"[ERROR] DEBUG: Error processing user {i}: {e}")
                 continue
         
-        print(f"🐱 DEBUG: Filtered to {len(filtered_users)} users")
+        print(f"[CAT] DEBUG: Filtered to {len(filtered_users)} users")
         
         # Safe pagination
         start = (page - 1) * limit
         end = start + limit
         paginated_users = filtered_users[start:end]
         
-        print(f"🐱 DEBUG: Paginated slice [{start}:{end}] = {len(paginated_users)} users")
+        print(f"[CAT] DEBUG: Paginated slice [{start}:{end}] = {len(paginated_users)} users")
         
         # Add usage statistics with error handling
         users_data = []
@@ -215,7 +215,7 @@ def list_users():
                     if hasattr(user, 'token_counts') and user.token_counts:
                         total_tokens = sum(count.total for count in user.token_counts.values())
                 except Exception as e:
-                    print(f"🚫 DEBUG: Error calculating tokens for user {user.token[:8]}: {e}")
+                    print(f"[ERROR] DEBUG: Error calculating tokens for user {user.token[:8]}: {e}")
                 
                 try:
                     if hasattr(user, 'ip_usage') and user.ip_usage:
@@ -223,7 +223,7 @@ def list_users():
                     elif hasattr(user, 'total_requests'):
                         total_requests = user.total_requests
                 except Exception as e:
-                    print(f"🚫 DEBUG: Error calculating requests for user {user.token[:8]}: {e}")
+                    print(f"[ERROR] DEBUG: Error calculating requests for user {user.token[:8]}: {e}")
                 
                 # Safe datetime calculation
                 days_since_created = 0
@@ -231,29 +231,29 @@ def list_users():
                     if hasattr(user, 'created_at') and user.created_at:
                         days_since_created = (datetime.now() - user.created_at).days
                 except Exception as e:
-                    print(f"🚫 DEBUG: Error calculating days for user {user.token[:8]}: {e}")
+                    print(f"[ERROR] DEBUG: Error calculating days for user {user.token[:8]}: {e}")
                 
                 # Ensure critical attributes exist for template rendering
                 try:
                     if not hasattr(user, 'created_at') or user.created_at is None:
-                        print(f"🚫 DEBUG: User {user.token[:8]} missing created_at, setting fallback")
+                        print(f"[ERROR] DEBUG: User {user.token[:8]} missing created_at, setting fallback")
                         user.created_at = datetime.now()
                     
                     if not hasattr(user, 'type') or user.type is None:
-                        print(f"🚫 DEBUG: User {user.token[:8]} missing type, setting fallback")
+                        print(f"[ERROR] DEBUG: User {user.token[:8]} missing type, setting fallback")
                         from ..services.user_store import UserType
                         user.type = UserType.NORMAL
                     
                     if not hasattr(user, 'disabled_at'):
-                        print(f"🚫 DEBUG: User {user.token[:8]} missing disabled_at, setting fallback")
+                        print(f"[ERROR] DEBUG: User {user.token[:8]} missing disabled_at, setting fallback")
                         user.disabled_at = None
                     
                     if not hasattr(user, 'nickname'):
-                        print(f"🚫 DEBUG: User {user.token[:8]} missing nickname, setting fallback")
+                        print(f"[ERROR] DEBUG: User {user.token[:8]} missing nickname, setting fallback")
                         user.nickname = None
                     
                     if not hasattr(user, 'token') or not user.token:
-                        print(f"🚫 DEBUG: User missing token, using provided token")
+                        print(f"[ERROR] DEBUG: User missing token, using provided token")
                         user.token = token
                     
                     # Ensure cat-themed attributes exist
@@ -264,10 +264,10 @@ def list_users():
                     if not hasattr(user, 'total_cost'):
                         user.total_cost = 0.0
                     if not hasattr(user, 'mood_emoji'):
-                        user.mood_emoji = '😸'
+                        user.mood_emoji = ''
                         
                 except Exception as e:
-                    print(f"🚫 DEBUG: Error setting fallback attributes for user {user.token[:8] if hasattr(user, 'token') else 'unknown'}: {e}")
+                    print(f"[ERROR] DEBUG: Error setting fallback attributes for user {user.token[:8] if hasattr(user, 'token') else 'unknown'}: {e}")
                 
                 user_data = {
                     'user': user,
@@ -282,7 +282,7 @@ def list_users():
                 users_data.append(user_data)
                 
             except Exception as e:
-                print(f"🚫 DEBUG: Error creating user_data for user {i}: {e}")
+                print(f"[ERROR] DEBUG: Error creating user_data for user {i}: {e}")
                 # Create minimal safe user data
                 try:
                     user_data = {
@@ -296,7 +296,7 @@ def list_users():
                     }
                     users_data.append(user_data)
                 except Exception as e2:
-                    print(f"🚫 DEBUG: Failed to create fallback user_data: {e2}")
+                    print(f"[ERROR] DEBUG: Failed to create fallback user_data: {e2}")
                     continue
         
         total_filtered = len(filtered_users)
@@ -313,10 +313,10 @@ def list_users():
         
         dashboard_config = {
             'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-            'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+            'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
         }
         
-        print(f"🐱 DEBUG: Returning {len(users_data)} users for display")
+        print(f"[CAT] DEBUG: Returning {len(users_data)} users for display")
         
         return render_template('admin/list_users.html',
                              config=dashboard_config,
@@ -324,14 +324,14 @@ def list_users():
                              pagination=pagination)
                              
     except Exception as e:
-        print(f"🚫 CRITICAL ERROR in list_users: {e}")
+        print(f"[ERROR] CRITICAL ERROR in list_users: {e}")
         import traceback
         traceback.print_exc()
         
         # Return safe fallback
         dashboard_config = {
             'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-            'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+            'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
         }
         
         flash(f'Error loading users: {str(e)}', 'error')
@@ -413,7 +413,7 @@ def create_user():
     
     dashboard_config = {
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     return render_template('admin/create_user.html', 
@@ -426,35 +426,35 @@ def create_user():
 def view_user(token: str):
     """View detailed user information with comprehensive error handling"""
     try:
-        print(f"🐱 DEBUG view_user: Viewing user with token {token[:8]}...")
+        print(f"[CAT] DEBUG view_user: Viewing user with token {token[:8]}...")
         
         user = user_store.get_user(token)
         
         if not user:
-            print(f"🚫 DEBUG view_user: User {token[:8]} not found")
+            print(f"[ERROR] DEBUG view_user: User {token[:8]} not found")
             flash('User not found', 'error')
             return redirect(url_for('admin.list_users'))
         
-        print(f"🐱 DEBUG view_user: User {token[:8]} found, type={user.type.value if hasattr(user, 'type') else 'unknown'}")
+        print(f"[CAT] DEBUG view_user: User {token[:8]} found, type={user.type.value if hasattr(user, 'type') else 'unknown'}")
         
         # Safe user stats collection with error handling
         usage_stats = {}
         enhanced_stats = {}
         
         try:
-            print(f"🐱 DEBUG view_user: Getting event logger stats for {token[:8]}")
+            print(f"[CAT] DEBUG view_user: Getting event logger stats for {token[:8]}")
             usage_stats = event_logger.get_user_stats(token)
-            print(f"🐱 DEBUG view_user: Event logger stats retrieved: {len(usage_stats) if usage_stats else 0} items")
+            print(f"[CAT] DEBUG view_user: Event logger stats retrieved: {len(usage_stats) if usage_stats else 0} items")
         except Exception as e:
-            print(f"🚫 DEBUG view_user: Error getting event logger stats for {token[:8]}: {e}")
+            print(f"[ERROR] DEBUG view_user: Error getting event logger stats for {token[:8]}: {e}")
             usage_stats = {}
         
         try:
-            print(f"🐱 DEBUG view_user: Getting structured logger analytics for {token[:8]}")
+            print(f"[CAT] DEBUG view_user: Getting structured logger analytics for {token[:8]}")
             enhanced_stats = structured_logger.get_user_analytics(token)
-            print(f"🐱 DEBUG view_user: Structured logger stats retrieved: {len(enhanced_stats) if enhanced_stats else 0} items")
+            print(f"[CAT] DEBUG view_user: Structured logger stats retrieved: {len(enhanced_stats) if enhanced_stats else 0} items")
         except Exception as e:
-            print(f"🚫 DEBUG view_user: Error getting structured logger analytics for {token[:8]}: {e}")
+            print(f"[ERROR] DEBUG view_user: Error getting structured logger analytics for {token[:8]}: {e}")
             enhanced_stats = {}
         
         # Safe stats combination with error handling
@@ -469,9 +469,9 @@ def view_user(token: str):
                     'daily_usage': enhanced_stats.get('daily_usage', {})
                 }
                 usage_stats.update(safe_enhanced_stats)
-                print(f"🐱 DEBUG view_user: Stats combined successfully for {token[:8]}")
+                print(f"[CAT] DEBUG view_user: Stats combined successfully for {token[:8]}")
         except Exception as e:
-            print(f"🚫 DEBUG view_user: Error combining stats for {token[:8]}: {e}")
+            print(f"[ERROR] DEBUG view_user: Error combining stats for {token[:8]}: {e}")
         
         # Add recent events (Firebase logger doesn't have this method yet)
         recent_events = []  # TODO: Implement get_events method in FirebaseEventLogger
@@ -480,16 +480,16 @@ def view_user(token: str):
         try:
             # Validate user object has required attributes
             if not hasattr(user, 'token'):
-                print(f"🚫 DEBUG view_user: User missing token attribute")
+                print(f"[ERROR] DEBUG view_user: User missing token attribute")
                 user.token = token  # Fallback
             
             if not hasattr(user, 'type'):
-                print(f"🚫 DEBUG view_user: User missing type attribute")
+                print(f"[ERROR] DEBUG view_user: User missing type attribute")
                 from ..services.user_store import UserType
                 user.type = UserType.NORMAL  # Fallback
             
             if not hasattr(user, 'created_at'):
-                print(f"🚫 DEBUG view_user: User missing created_at attribute")
+                print(f"[ERROR] DEBUG view_user: User missing created_at attribute")
                 user.created_at = datetime.now()  # Fallback
             
             user_data = {
@@ -498,10 +498,10 @@ def view_user(token: str):
                 'recent_events': recent_events
             }
             
-            print(f"🐱 DEBUG view_user: User data created successfully for {token[:8]}")
+            print(f"[CAT] DEBUG view_user: User data created successfully for {token[:8]}")
             
         except Exception as e:
-            print(f"🚫 DEBUG view_user: Error creating user_data for {token[:8]}: {e}")
+            print(f"[ERROR] DEBUG view_user: Error creating user_data for {token[:8]}: {e}")
             # Create minimal safe user data
             user_data = {
                 'user': user,
@@ -511,24 +511,24 @@ def view_user(token: str):
         
         dashboard_config = {
             'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-            'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+            'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
         }
         
-        print(f"🐱 DEBUG view_user: Rendering template for {token[:8]}")
+        print(f"[CAT] DEBUG view_user: Rendering template for {token[:8]}")
         
         return render_template('admin/view_user.html',
                              config=dashboard_config,
                              user_data=user_data)
                              
     except Exception as e:
-        print(f"🚫 CRITICAL ERROR in view_user for {token[:8]}: {e}")
+        print(f"[ERROR] CRITICAL ERROR in view_user for {token[:8]}: {e}")
         import traceback
         traceback.print_exc()
         
         # Return safe fallback
         dashboard_config = {
             'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-            'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+            'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
         }
         
         flash(f'Error loading user details: {str(e)}', 'error')
@@ -546,7 +546,7 @@ def view_user(token: str):
                                      config=dashboard_config,
                                      user_data=user_data)
         except Exception as fallback_error:
-            print(f"🚫 DEBUG view_user: Fallback also failed: {fallback_error}")
+            print(f"[ERROR] DEBUG view_user: Fallback also failed: {fallback_error}")
         
         # Ultimate fallback - redirect to user list
         return redirect(url_for('admin.list_users'))
@@ -598,7 +598,7 @@ def edit_user(token: str):
     
     dashboard_config = {
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     return render_template('admin/edit_user.html',
@@ -611,7 +611,7 @@ def key_manager():
     """API key management interface"""
     dashboard_config = {
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     return render_template('admin/key_manager.html', config=dashboard_config)
@@ -622,7 +622,7 @@ def anti_abuse():
     """Anti-abuse settings interface with Firebase persistence"""
     dashboard_config = {
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     # Import config manager
@@ -669,16 +669,16 @@ def anti_abuse():
                 if auto_reactivate:
                     # Trigger bulk reactivation by current rules
                     reactivated_count = bulk_reactivate_by_current_rules_internal()
-                    flash(f'🐱 Anti-hairball settings saved and {reactivated_count} users reactivated! Meow!', 'success')
+                    flash(f'[CAT] Anti-hairball settings saved and {reactivated_count} users reactivated! Meow!', 'success')
                 else:
-                    flash('🐱 Anti-hairball settings saved to Firebase successfully! Meow!', 'success')
+                    flash('[CAT] Anti-hairball settings saved to Firebase successfully! Meow!', 'success')
             else:
-                flash('⚠️ Settings updated locally but Firebase save failed. Settings may not persist on restart.', 'warning')
+                flash('[WARN] Settings updated locally but Firebase save failed. Settings may not persist on restart.', 'warning')
             
         except ValueError as e:
-            flash(f'❌ Invalid input: {str(e)}', 'error')
+            flash(f'[FAIL] Invalid input: {str(e)}', 'error')
         except Exception as e:
-            flash(f'❌ Error updating settings: {str(e)}', 'error')
+            flash(f'[FAIL] Error updating settings: {str(e)}', 'error')
         
         return redirect(url_for('admin.anti_abuse'))
     
@@ -746,7 +746,7 @@ def stats():
     """Statistics and analytics interface"""
     dashboard_config = {
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     return render_template('admin/stats.html', config=dashboard_config)
@@ -757,7 +757,7 @@ def bulk_operations():
     """Bulk operations interface"""
     dashboard_config = {
         'brand_name': os.getenv('BRAND_NAME', 'NyanProxy'),
-        'brand_emoji': os.getenv('BRAND_EMOJI', '🐱'),
+        'brand_emoji': os.getenv('BRAND_EMOJI', '[CAT]'),
     }
     
     return render_template('admin/bulk_operations.html', config=dashboard_config)

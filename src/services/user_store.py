@@ -273,10 +273,10 @@ class User:
             # Determine status based on disabled_at if status is missing
             if self.disabled_at:
                 self.status = UserStatus.DISABLED
-                print(f"🔄 POST_INIT: Set user {self.token[:8]} status to DISABLED based on disabled_at")
+                print(f"[RETRY] POST_INIT: Set user {self.token[:8]} status to DISABLED based on disabled_at")
             else:
                 self.status = UserStatus.ACTIVE
-                print(f"🔄 POST_INIT: Set user {self.token[:8]} status to ACTIVE (no disabled_at)")
+                print(f"[RETRY] POST_INIT: Set user {self.token[:8]} status to ACTIVE (no disabled_at)")
             
         # Initialize cat mood based on user type
         if self.type == UserType.SPECIAL:
@@ -428,7 +428,7 @@ class User:
         if most_used_model:
             self.favorite_treat = most_used_model
         else:
-            self.favorite_treat = 'Still exploring treats... 🐾'
+            self.favorite_treat = 'Still exploring treats... '
     
     def get_or_create_ip_usage(self, ip_hash: str) -> IPUsage:
         """Get or create IP usage tracking for a given IP hash"""
@@ -462,12 +462,12 @@ class User:
     def get_mood_emoji(self) -> str:
         """Get emoji representation of cat mood"""
         mood_emojis = {
-            "happy": "😸",
-            "sleepy": "😴",
-            "grumpy": "😾",
-            "playful": "😼"
+            "happy": "",
+            "sleepy": "",
+            "grumpy": "",
+            "playful": ""
         }
-        return mood_emojis.get(self.mood, "😺")
+        return mood_emojis.get(self.mood, "")
     
     def validate_and_fix_data_integrity(self) -> bool:
         """Validate and fix data integrity issues with user object"""
@@ -476,39 +476,39 @@ class User:
         try:
             # Ensure token exists
             if not hasattr(self, 'token') or not self.token:
-                print(f"🚫 INTEGRITY: User missing token field")
+                print(f"[ERROR] INTEGRITY: User missing token field")
                 return False  # Can't fix missing token
             
             # Ensure type exists and is valid
             if not hasattr(self, 'type') or self.type is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing type, setting to NORMAL")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing type, setting to NORMAL")
                 self.type = UserType.NORMAL
                 fixed_issues = True
             
             # Ensure created_at exists
             if not hasattr(self, 'created_at') or self.created_at is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing created_at, setting to now")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing created_at, setting to now")
                 self.created_at = datetime.now()
                 fixed_issues = True
             
             # Ensure basic collections exist
             if not hasattr(self, 'ip') or self.ip is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing ip list, initializing")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing ip list, initializing")
                 self.ip = []
                 fixed_issues = True
             
             if not hasattr(self, 'ip_usage') or self.ip_usage is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing ip_usage list, initializing")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing ip_usage list, initializing")
                 self.ip_usage = []
                 fixed_issues = True
             
             if not hasattr(self, 'token_counts') or self.token_counts is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing token_counts, initializing")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing token_counts, initializing")
                 self.token_counts = {}
                 fixed_issues = True
             
             if not hasattr(self, 'prompt_limits') or self.prompt_limits is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing prompt_limits, initializing")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing prompt_limits, initializing")
                 self.prompt_limits = {
                     'openai': None,
                     'anthropic': None,
@@ -518,7 +518,7 @@ class User:
                 fixed_issues = True
             
             if not hasattr(self, 'token_refresh') or self.token_refresh is None:
-                print(f"🔧 INTEGRITY: User {self.token[:8]} missing token_refresh, initializing")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing token_refresh, initializing")
                 self.token_refresh = {
                     'openai': 0,
                     'anthropic': 0,
@@ -555,7 +555,7 @@ class User:
                 if not hasattr(self, field_name):
                     setattr(self, field_name, default_value)
                     if field_name in ['paw_prints', 'mood']:  # Only log important cat fields
-                        print(f"🔧 INTEGRITY: User {self.token[:8]} missing {field_name}, set to {default_value}")
+                        print(f"[TOOL] INTEGRITY: User {self.token[:8]} missing {field_name}, set to {default_value}")
                         fixed_issues = True
             
             # Ensure cat-themed fields exist
@@ -568,14 +568,14 @@ class User:
             
             # Ensure collections are not corrupted
             if not isinstance(self.preferred_models, dict):
-                print(f"🔧 INTEGRITY: User {self.token[:8]} has corrupted preferred_models, resetting")
+                print(f"[TOOL] INTEGRITY: User {self.token[:8]} has corrupted preferred_models, resetting")
                 self.preferred_models = {}
                 fixed_issues = True
             
             return fixed_issues
             
         except Exception as e:
-            print(f"🚫 INTEGRITY: Error validating user {getattr(self, 'token', 'unknown')[:8]}: {e}")
+            print(f"[ERROR] INTEGRITY: Error validating user {getattr(self, 'token', 'unknown')[:8]}: {e}")
             return False
     
     def add_rate_limit_hit(self):
@@ -627,13 +627,13 @@ class User:
     def get_happiness_emoji(self) -> str:
         """Get emoji representing current happiness level"""
         if self.happiness >= 80:
-            return "😸"  # grinning cat
+            return ""  # grinning cat
         elif self.happiness >= 60:
-            return "😺"  # smiling cat
+            return ""  # smiling cat
         elif self.happiness >= 40:
-            return "😼"  # cat with wry smile
+            return ""  # cat with wry smile
         else:
-            return "🙀"  # weary cat
+            return ""  # weary cat
     
     def _sanitize_model_key(self, key: str) -> str:
         """Sanitize model name for Firebase (replace invalid characters)"""
@@ -854,35 +854,35 @@ class UserStore:
                     users_to_migrate = []
                     for token, user_data in users_data.items():
                         try:
-                            print(f"🔄 LOADING: User {token[:8]} from Firebase")
-                            print(f"🔄 LOADING: User {token[:8]} Firebase data has status: {'status' in user_data}")
-                            print(f"🔄 LOADING: User {token[:8]} Firebase status value: {user_data.get('status')}")
-                            print(f"🔄 LOADING: User {token[:8]} Firebase disabled_at: {user_data.get('disabled_at')}")
+                            print(f"[RETRY] LOADING: User {token[:8]} from Firebase")
+                            print(f"[RETRY] LOADING: User {token[:8]} Firebase data has status: {'status' in user_data}")
+                            print(f"[RETRY] LOADING: User {token[:8]} Firebase status value: {user_data.get('status')}")
+                            print(f"[RETRY] LOADING: User {token[:8]} Firebase disabled_at: {user_data.get('disabled_at')}")
                             
                             user = User.from_dict(user_data)
                             
-                            print(f"🔄 LOADING: User {token[:8]} loaded - status: {getattr(user, 'status', 'not set')}")
-                            print(f"🔄 LOADING: User {token[:8]} loaded - hasattr status: {hasattr(user, 'status')}")
-                            print(f"🔄 LOADING: User {token[:8]} loaded - is_disabled(): {user.is_disabled()}")
-                            print(f"🔄 LOADING: User {token[:8]} token_counts keys: {list(user.token_counts.keys()) if user.token_counts else 'None'}")
+                            print(f"[RETRY] LOADING: User {token[:8]} loaded - status: {getattr(user, 'status', 'not set')}")
+                            print(f"[RETRY] LOADING: User {token[:8]} loaded - hasattr status: {hasattr(user, 'status')}")
+                            print(f"[RETRY] LOADING: User {token[:8]} loaded - is_disabled(): {user.is_disabled()}")
+                            print(f"[RETRY] LOADING: User {token[:8]} token_counts keys: {list(user.token_counts.keys()) if user.token_counts else 'None'}")
                             if user.token_counts:
                                 for family, count in user.token_counts.items():
-                                    print(f"🔄 LOADING: User {token[:8]} {family}: {count.total} total, {count.requests} requests")
+                                    print(f"[RETRY] LOADING: User {token[:8]} {family}: {count.total} total, {count.requests} requests")
                             
                             self.users[token] = user
                             
                             # Check if user needs status field migration
                             if 'status' not in user_data:
                                 users_to_migrate.append(token)
-                                print(f"🔄 MIGRATION: User {token[:8]} needs status field migration")
+                                print(f"[RETRY] MIGRATION: User {token[:8]} needs status field migration")
                         except Exception as e:
                             print(f"Failed to load user {token}: {e}")
                 
-                print(f"🐱 FIREBASE: Loaded {len(self.users)} users from Firebase")
+                print(f"[CAT] FIREBASE: Loaded {len(self.users)} users from Firebase")
                 
                 # Migrate users without status field
                 if users_to_migrate:
-                    print(f"🔄 MIGRATION: Migrating {len(users_to_migrate)} users to add status field")
+                    print(f"[RETRY] MIGRATION: Migrating {len(users_to_migrate)} users to add status field")
                     for token in users_to_migrate:
                         self._migrate_user_status(token)
             
@@ -896,22 +896,22 @@ class UserStore:
                 return
             
             user = self.users[token]
-            print(f"🔄 MIGRATION: Migrating user {token[:8]} - disabled_at: {user.disabled_at}")
+            print(f"[RETRY] MIGRATION: Migrating user {token[:8]} - disabled_at: {user.disabled_at}")
             
             # Ensure status is set based on disabled_at
             if user.disabled_at:
                 user.status = UserStatus.DISABLED
-                print(f"🔄 MIGRATION: Set user {token[:8]} status to DISABLED")
+                print(f"[RETRY] MIGRATION: Set user {token[:8]} status to DISABLED")
             else:
                 user.status = UserStatus.ACTIVE
-                print(f"🔄 MIGRATION: Set user {token[:8]} status to ACTIVE")
+                print(f"[RETRY] MIGRATION: Set user {token[:8]} status to ACTIVE")
             
             # Force immediate flush to update Firebase
             self._flush_to_firebase(token)
-            print(f"🔄 MIGRATION: Completed migration for user {token[:8]}")
+            print(f"[RETRY] MIGRATION: Completed migration for user {token[:8]}")
             
         except Exception as e:
-            print(f"🚫 MIGRATION: Failed to migrate user {token[:8]}: {e}")
+            print(f"[ERROR] MIGRATION: Failed to migrate user {token[:8]}: {e}")
     
     def _sanitize_firebase_key(self, key: str) -> str:
         """Sanitize key for Firebase (remove invalid characters)"""
@@ -920,7 +920,7 @@ class UserStore:
     def _flush_to_firebase(self, token: str):
         """Flush user to Firebase"""
         if not self.firebase_db:
-            print(f"🚫 FIREBASE: No Firebase DB connection for user {token[:8]}")
+            print(f"[ERROR] FIREBASE: No Firebase DB connection for user {token[:8]}")
             return
         
         try:
@@ -929,28 +929,28 @@ class UserStore:
             if token in self.users:
                 # Update user
                 user_data = self.users[token].to_dict()
-                print(f"🐱 FIREBASE: Flushing user {token[:8]} to Firebase")
-                print(f"🐱 FIREBASE: disabled_at in data: {user_data.get('disabled_at')}")
-                print(f"🐱 FIREBASE: disabled_reason in data: {user_data.get('disabled_reason')}")
-                print(f"🐱 FIREBASE: status in data: {user_data.get('status')}")
-                print(f"🐱 FIREBASE: user object status: {getattr(self.users[token], 'status', 'not set')}")
-                print(f"🐱 FIREBASE: user object is_disabled(): {self.users[token].is_disabled()}")
-                print(f"🐱 FIREBASE: token_counts in data: {list(user_data.get('token_counts', {}).keys())}")
+                print(f"[CAT] FIREBASE: Flushing user {token[:8]} to Firebase")
+                print(f"[CAT] FIREBASE: disabled_at in data: {user_data.get('disabled_at')}")
+                print(f"[CAT] FIREBASE: disabled_reason in data: {user_data.get('disabled_reason')}")
+                print(f"[CAT] FIREBASE: status in data: {user_data.get('status')}")
+                print(f"[CAT] FIREBASE: user object status: {getattr(self.users[token], 'status', 'not set')}")
+                print(f"[CAT] FIREBASE: user object is_disabled(): {self.users[token].is_disabled()}")
+                print(f"[CAT] FIREBASE: token_counts in data: {list(user_data.get('token_counts', {}).keys())}")
                 for family, count_data in user_data.get('token_counts', {}).items():
                     if isinstance(count_data, dict):
                         original_key = family.replace('_DOT_', '.').replace('_HASH_', '#').replace('_DOLLAR_', '$').replace('_LBRACKET_', '[').replace('_RBRACKET_', ']').replace('_SLASH_', '/')
-                        print(f"🐱 FIREBASE: {family} -> {original_key}: {count_data.get('total', 0)} total, {count_data.get('requests', 0)} requests")
+                        print(f"[CAT] FIREBASE: {family} -> {original_key}: {count_data.get('total', 0)} total, {count_data.get('requests', 0)} requests")
                 
                 user_ref = self.firebase_db.child('users').child(sanitized_token)
                 user_ref.set(user_data)
-                print(f"🐱 FIREBASE: Successfully flushed user {token[:8]} to Firebase")
+                print(f"[CAT] FIREBASE: Successfully flushed user {token[:8]} to Firebase")
             else:
                 # Delete user
-                print(f"🗑️ FIREBASE: Deleting user {token[:8]} from Firebase")
+                print(f"[DELETE] FIREBASE: Deleting user {token[:8]} from Firebase")
                 user_ref = self.firebase_db.child('users').child(sanitized_token)
                 user_ref.delete()
         except Exception as e:
-            print(f"🚫 FIREBASE: Failed to flush user {token[:8]} to Firebase: {e}")
+            print(f"[ERROR] FIREBASE: Failed to flush user {token[:8]} to Firebase: {e}")
             import traceback
             traceback.print_exc()
     
@@ -960,7 +960,7 @@ class UserStore:
             return
         
         try:
-            print(f"🔄 BATCH FLUSH: Starting batch flush for {len(tokens)} users")
+            print(f"[RETRY] BATCH FLUSH: Starting batch flush for {len(tokens)} users")
             # Prepare batch update data
             batch_data = {}
             to_delete = []
@@ -971,33 +971,33 @@ class UserStore:
                     user = self.users[token]
                     user_data = user.to_dict()
                     
-                    print(f"🔄 BATCH FLUSH: User {token[:8]} - disabled_at: {user.disabled_at}")
-                    print(f"🔄 BATCH FLUSH: User {token[:8]} - disabled_reason: {user.disabled_reason}")
-                    print(f"🔄 BATCH FLUSH: User {token[:8]} - status: {getattr(user, 'status', 'not set')}")
-                    print(f"🔄 BATCH FLUSH: User {token[:8]} - to_dict status: {user_data.get('status')}")
-                    print(f"🔄 BATCH FLUSH: User {token[:8]} - to_dict disabled_at: {user_data.get('disabled_at')}")
-                    print(f"🔄 BATCH FLUSH: User {token[:8]} - is_disabled(): {user.is_disabled()}")
+                    print(f"[RETRY] BATCH FLUSH: User {token[:8]} - disabled_at: {user.disabled_at}")
+                    print(f"[RETRY] BATCH FLUSH: User {token[:8]} - disabled_reason: {user.disabled_reason}")
+                    print(f"[RETRY] BATCH FLUSH: User {token[:8]} - status: {getattr(user, 'status', 'not set')}")
+                    print(f"[RETRY] BATCH FLUSH: User {token[:8]} - to_dict status: {user_data.get('status')}")
+                    print(f"[RETRY] BATCH FLUSH: User {token[:8]} - to_dict disabled_at: {user_data.get('disabled_at')}")
+                    print(f"[RETRY] BATCH FLUSH: User {token[:8]} - is_disabled(): {user.is_disabled()}")
                     
                     batch_data[f'users/{sanitized_token}'] = user_data
                 else:
                     # User was deleted
-                    print(f"🗑️ BATCH FLUSH: User {token[:8]} marked for deletion")
+                    print(f"[DELETE] BATCH FLUSH: User {token[:8]} marked for deletion")
                     to_delete.append(sanitized_token)
             
             # Perform batch update for existing users
             if batch_data:
-                print(f"🔄 BATCH FLUSH: Updating {len(batch_data)} users in Firebase")
+                print(f"[RETRY] BATCH FLUSH: Updating {len(batch_data)} users in Firebase")
                 self.firebase_db.update(batch_data)
-                print(f"🔄 BATCH FLUSH: Batch update completed")
+                print(f"[RETRY] BATCH FLUSH: Batch update completed")
             
             # Delete users that were removed
             for sanitized_token in to_delete:
-                print(f"🗑️ BATCH FLUSH: Deleting user from Firebase")
+                print(f"[DELETE] BATCH FLUSH: Deleting user from Firebase")
                 user_ref = self.firebase_db.child('users').child(sanitized_token)
                 user_ref.delete()
                 
         except Exception as e:
-            print(f"🚫 BATCH FLUSH: Failed to batch flush users to Firebase: {e}")
+            print(f"[ERROR] BATCH FLUSH: Failed to batch flush users to Firebase: {e}")
             import traceback
             traceback.print_exc()
             # Fallback to individual flushes
@@ -1009,31 +1009,31 @@ class UserStore:
         def cleanup_loop():
             while True:
                 try:
-                    print(f"🧹 CLEANUP THREAD: Starting cleanup cycle")
+                    print(f"[CLEAN] CLEANUP THREAD: Starting cleanup cycle")
                     
                     # Flush pending changes to Firebase in batches
                     with self.flush_queue_lock:
                         flush_tokens = list(self.flush_queue.copy())
                         self.flush_queue.clear()
                     
-                    print(f"🧹 CLEANUP THREAD: Found {len(flush_tokens)} users in flush queue")
+                    print(f"[CLEAN] CLEANUP THREAD: Found {len(flush_tokens)} users in flush queue")
                     
                     if flush_tokens:
                         # Process in batches for better performance
                         batch_size = 10
                         for i in range(0, len(flush_tokens), batch_size):
                             batch = flush_tokens[i:i + batch_size]
-                            print(f"🧹 CLEANUP THREAD: Processing batch {i//batch_size + 1} with {len(batch)} users")
+                            print(f"[CLEAN] CLEANUP THREAD: Processing batch {i//batch_size + 1} with {len(batch)} users")
                             self._batch_flush_to_firebase(batch)
                     
                     # Clean up expired temporary users
-                    print(f"🧹 CLEANUP THREAD: Running expired user cleanup")
+                    print(f"[CLEAN] CLEANUP THREAD: Running expired user cleanup")
                     self._cleanup_expired_users()
                     
-                    print(f"🧹 CLEANUP THREAD: Cleanup cycle completed, sleeping for 300 seconds")
+                    print(f"[CLEAN] CLEANUP THREAD: Cleanup cycle completed, sleeping for 300 seconds")
                     time.sleep(300)  # Changed to 5 minutes for debugging
                 except Exception as e:
-                    print(f"🚫 CLEANUP THREAD: Cleanup thread error: {e}")
+                    print(f"[ERROR] CLEANUP THREAD: Cleanup thread error: {e}")
                     import traceback
                     traceback.print_exc()
                     time.sleep(300)
@@ -1063,21 +1063,21 @@ class UserStore:
         """Internal method to disable user (assumes lock is held)"""
         if token in self.users:
             user = self.users[token]
-            print(f"🐱 DISABLE: User {token[:8]} before - disabled_at: {user.disabled_at}, status: {getattr(user, 'status', 'not set')}")
+            print(f"[CAT] DISABLE: User {token[:8]} before - disabled_at: {user.disabled_at}, status: {getattr(user, 'status', 'not set')}")
             
             user.disabled_at = datetime.now()
             user.disabled_reason = reason
             user.status = UserStatus.DISABLED  # Set explicit status
             
-            print(f"🐱 DISABLE: User {token[:8]} after setting - disabled_at: {user.disabled_at}, reason: {user.disabled_reason}, status: {user.status}")
+            print(f"[CAT] DISABLE: User {token[:8]} after setting - disabled_at: {user.disabled_at}, reason: {user.disabled_reason}, status: {user.status}")
             
             # Force immediate Firebase flush for critical operations
             try:
-                print(f"🐱 DISABLE: Immediately flushing user {token[:8]} to Firebase")
+                print(f"[CAT] DISABLE: Immediately flushing user {token[:8]} to Firebase")
                 self._flush_to_firebase(token)
-                print(f"🐱 DISABLE: Firebase flush completed for user {token[:8]}")
+                print(f"[CAT] DISABLE: Firebase flush completed for user {token[:8]}")
             except Exception as e:
-                print(f"🚫 DISABLE: Firebase flush failed for user {token[:8]}: {e}")
+                print(f"[ERROR] DISABLE: Firebase flush failed for user {token[:8]}: {e}")
             
             # Also add to flush queue for backup
             with self.flush_queue_lock:
@@ -1112,9 +1112,9 @@ class UserStore:
                     user_data = user.to_dict()
                     user_ref = self.firebase_db.child('users').child(sanitized_token)
                     user_ref.set(user_data)
-                    print(f"💾 IMMEDIATE SAVE: Successfully saved new user {token[:8]} to Firebase")
+                    print(f" IMMEDIATE SAVE: Successfully saved new user {token[:8]} to Firebase")
                 except Exception as e:
-                    print(f"🚫 IMMEDIATE SAVE: Failed to save new user {token[:8]} to Firebase: {e}")
+                    print(f"[ERROR] IMMEDIATE SAVE: Failed to save new user {token[:8]} to Firebase: {e}")
                     # Add to flush queue as fallback
                     with self.flush_queue_lock:
                         self.flush_queue.add(token)
@@ -1129,35 +1129,35 @@ class UserStore:
         """Authenticate user token and track IP"""
         with self.lock.write_lock():
             if token not in self.users:
-                print(f"🚫 AUTH: User {token[:8]} not found in users dict")
+                print(f"[ERROR] AUTH: User {token[:8]} not found in users dict")
                 return AuthResult.NOT_FOUND, None
             
             user = self.users[token]
-            print(f"🐱 AUTH: Authenticating user {token[:8]}")
-            print(f"🐱 AUTH: User {token[:8]} disabled_at: {user.disabled_at}")
-            print(f"🐱 AUTH: User {token[:8]} disabled_reason: {user.disabled_reason}")
-            print(f"🐱 AUTH: User {token[:8]} status: {getattr(user, 'status', 'not set')}")
-            print(f"🐱 AUTH: User {token[:8]} hasattr status: {hasattr(user, 'status')}")
-            print(f"🐱 AUTH: User {token[:8]} status type: {type(getattr(user, 'status', None))}")
-            print(f"🐱 AUTH: User {token[:8]} is_disabled(): {user.is_disabled()}")
-            print(f"🐱 AUTH: User {token[:8]} to_dict status: {user.to_dict().get('status')}")
-            print(f"🐱 AUTH: User {token[:8]} to_dict disabled_at: {user.to_dict().get('disabled_at')}")
+            print(f"[CAT] AUTH: Authenticating user {token[:8]}")
+            print(f"[CAT] AUTH: User {token[:8]} disabled_at: {user.disabled_at}")
+            print(f"[CAT] AUTH: User {token[:8]} disabled_reason: {user.disabled_reason}")
+            print(f"[CAT] AUTH: User {token[:8]} status: {getattr(user, 'status', 'not set')}")
+            print(f"[CAT] AUTH: User {token[:8]} hasattr status: {hasattr(user, 'status')}")
+            print(f"[CAT] AUTH: User {token[:8]} status type: {type(getattr(user, 'status', None))}")
+            print(f"[CAT] AUTH: User {token[:8]} is_disabled(): {user.is_disabled()}")
+            print(f"[CAT] AUTH: User {token[:8]} to_dict status: {user.to_dict().get('status')}")
+            print(f"[CAT] AUTH: User {token[:8]} to_dict disabled_at: {user.to_dict().get('disabled_at')}")
             
             # DISABLED: Firebase consistency check was causing corruption by reloading users
             # This was overwriting good in-memory data with potentially incomplete Firebase data
             # TODO: Implement a safer consistency check that doesn't corrupt user data
-            print(f"🔥 FIREBASE CHECK: Consistency check temporarily disabled to prevent corruption")
+            print(f" FIREBASE CHECK: Consistency check temporarily disabled to prevent corruption")
             
             # Check if user is disabled (after potential reload)
-            print(f"🔍 AUTH: Final check - User {token[:8]} status: {getattr(user, 'status', 'not set')}")
-            print(f"🔍 AUTH: Final check - User {token[:8]} disabled_at: {user.disabled_at}")
-            print(f"🔍 AUTH: Final check - User {token[:8]} is_disabled(): {user.is_disabled()}")
+            print(f"[SEARCH] AUTH: Final check - User {token[:8]} status: {getattr(user, 'status', 'not set')}")
+            print(f"[SEARCH] AUTH: Final check - User {token[:8]} disabled_at: {user.disabled_at}")
+            print(f"[SEARCH] AUTH: Final check - User {token[:8]} is_disabled(): {user.is_disabled()}")
             
             if user.is_disabled():
-                print(f"🚫 AUTH: User {token[:8]} is disabled, returning DISABLED with reason: {user.disabled_reason}")
+                print(f"[ERROR] AUTH: User {token[:8]} is disabled, returning DISABLED with reason: {user.disabled_reason}")
                 return AuthResult.DISABLED, user
             else:
-                print(f"✅ AUTH: User {token[:8]} is NOT disabled, proceeding with authentication")
+                print(f"[OK] AUTH: User {token[:8]} is NOT disabled, proceeding with authentication")
             
             # Check if temporary user has exceeded prompt limits
             if user.type == UserType.TEMPORARY and user.is_prompt_limit_exceeded():
@@ -1240,35 +1240,35 @@ class UserStore:
         """Reactivate a disabled user"""
         with self.lock.write_lock():
             if token not in self.users:
-                print(f"🚫 REACTIVATE: User {token[:8]} not found in users dict")
+                print(f"[ERROR] REACTIVATE: User {token[:8]} not found in users dict")
                 return False
             
             user = self.users[token]
-            print(f"🐱 REACTIVATE: User {token[:8]} before - disabled_at: {user.disabled_at}, reason: {user.disabled_reason}, status: {getattr(user, 'status', 'not set')}")
+            print(f"[CAT] REACTIVATE: User {token[:8]} before - disabled_at: {user.disabled_at}, reason: {user.disabled_reason}, status: {getattr(user, 'status', 'not set')}")
             
             # Clear disabled status
             user.disabled_at = None
             user.disabled_reason = None
             user.status = UserStatus.ACTIVE  # Set explicit status to active
             
-            print(f"🐱 REACTIVATE: User {token[:8]} after clearing - disabled_at: {user.disabled_at}, reason: {user.disabled_reason}, status: {user.status}")
-            print(f"🐱 REACTIVATE: User {token[:8]} is_disabled() after clearing: {user.is_disabled()}")
+            print(f"[CAT] REACTIVATE: User {token[:8]} after clearing - disabled_at: {user.disabled_at}, reason: {user.disabled_reason}, status: {user.status}")
+            print(f"[CAT] REACTIVATE: User {token[:8]} is_disabled() after clearing: {user.is_disabled()}")
             
             # Verify the disabled_at field is actually None
             if user.disabled_at is not None:
-                print(f"🚫 CRITICAL: User {token[:8]} disabled_at should be None but is: {user.disabled_at}")
+                print(f"[ERROR] CRITICAL: User {token[:8]} disabled_at should be None but is: {user.disabled_at}")
             if user.disabled_reason is not None:
-                print(f"🚫 CRITICAL: User {token[:8]} disabled_reason should be None but is: {user.disabled_reason}")
+                print(f"[ERROR] CRITICAL: User {token[:8]} disabled_reason should be None but is: {user.disabled_reason}")
             if user.is_disabled():
-                print(f"🚫 CRITICAL: User {token[:8]} is_disabled() should be False but returns True!")
+                print(f"[ERROR] CRITICAL: User {token[:8]} is_disabled() should be False but returns True!")
             
             # Force immediate Firebase flush for critical operations
             try:
-                print(f"🐱 REACTIVATE: Immediately flushing user {token[:8]} to Firebase")
+                print(f"[CAT] REACTIVATE: Immediately flushing user {token[:8]} to Firebase")
                 self._flush_to_firebase(token)
-                print(f"🐱 REACTIVATE: Firebase flush completed for user {token[:8]}")
+                print(f"[CAT] REACTIVATE: Firebase flush completed for user {token[:8]}")
             except Exception as e:
-                print(f"🚫 REACTIVATE: Firebase flush failed for user {token[:8]}: {e}")
+                print(f"[ERROR] REACTIVATE: Firebase flush failed for user {token[:8]}: {e}")
             
             # Also add to flush queue for backup
             with self.flush_queue_lock:
@@ -1294,9 +1294,9 @@ class UserStore:
                     sanitized_token = self._sanitize_firebase_key(token)
                     user_ref = self.firebase_db.child('users').child(sanitized_token)
                     user_ref.delete()
-                    print(f"🗑️ IMMEDIATE DELETE: Successfully deleted user {token[:8]} from Firebase")
+                    print(f"[DELETE] IMMEDIATE DELETE: Successfully deleted user {token[:8]} from Firebase")
                 except Exception as e:
-                    print(f"🚫 IMMEDIATE DELETE: Failed to delete user {token[:8]} from Firebase: {e}")
+                    print(f"[ERROR] IMMEDIATE DELETE: Failed to delete user {token[:8]} from Firebase: {e}")
                     # Add to flush queue as fallback
                     with self.flush_queue_lock:
                         self.flush_queue.add(token)

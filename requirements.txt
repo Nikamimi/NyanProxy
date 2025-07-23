@@ -1,10 +1,29 @@
-Flask==2.3.3
+# FastAPI and ASGI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# HTTP client and utilities  
 requests==2.31.0
-gunicorn==21.2.0
 python-dotenv==1.0.0
+
+# AI and tokenization
 tiktoken==0.5.2
+
+# Firebase integration
 firebase-admin==6.3.0
-Flask-WTF==1.1.1
+
+# System monitoring
 psutil==5.9.6
+
+# Google services integration
 gspread>=6.2.1
 google-auth>=2.40.3
+
+# Security and validation
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Development and testing
+pytest==7.4.3
+httpx==0.25.2

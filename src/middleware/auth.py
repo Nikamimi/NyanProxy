@@ -220,12 +220,12 @@ def track_token_usage(model_name: str, input_tokens: int, output_tokens: int, co
     )
     
     # Debug: Print token counts after tracking
-    print(f"🔍 TRACKING: User {token[:8]} after tracking {model_name}:")
+    print(f"[SEARCH] TRACKING: User {token[:8]} after tracking {model_name}:")
     if hasattr(user, 'token_counts') and user.token_counts:
         for family, count in user.token_counts.items():
-            print(f"🔍 TRACKING: {family}: {count.total} total, {count.requests} requests, {count.input} input, {count.output} output")
+            print(f"[SEARCH] TRACKING: {family}: {count.total} total, {count.requests} requests, {count.input} input, {count.output} output")
     else:
-        print(f"🔍 TRACKING: No token_counts found for user {token[:8]}")
+        print(f"[SEARCH] TRACKING: No token_counts found for user {token[:8]}")
     
     # Record successful prompt for happiness tracking
     user.record_successful_prompt()
@@ -252,7 +252,7 @@ def track_token_usage(model_name: str, input_tokens: int, output_tokens: int, co
     try:
         user_store._flush_to_firebase(token)
     except Exception as e:
-        print(f"⚠️ WARNING: Immediate flush failed for token usage, will retry in cleanup cycle: {e}")
+        print(f"[WARN] WARNING: Immediate flush failed for token usage, will retry in cleanup cycle: {e}")
 
 def require_admin_session(f):
     """Decorator to require admin session authentication for web interface"""

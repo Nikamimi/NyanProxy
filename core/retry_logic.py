@@ -57,7 +57,7 @@ class UniversalRetrySystem:
             }
         }
         
-        print(f"🔄 Universal Retry System initialized with MAX_RETRIES={self.max_retries}")
+        print(f"[RETRY] Universal Retry System initialized with MAX_RETRIES={self.max_retries}")
     
     def execute_with_retry(self, 
                           provider: str,
@@ -81,7 +81,7 @@ class UniversalRetrySystem:
         last_error = None
         last_error_code = None
         
-        print(f"🔄 Starting retry execution for {provider} (max retries: {self.max_retries})")
+        print(f"[RETRY] Starting retry execution for {provider} (max retries: {self.max_retries})")
         
         while attempts_made < self.max_retries:
             attempts_made += 1
@@ -90,7 +90,7 @@ class UniversalRetrySystem:
             api_key_obj = self.key_pool.get_healthy_key(provider)
             if not api_key_obj:
                 error_msg = f"No healthy API keys available for {provider} after {attempts_made-1} attempts"
-                print(f"❌ {error_msg}")
+                print(f"[FAIL] {error_msg}")
                 return RetryResult(
                     success=False,
                     error_message=error_msg,
@@ -102,7 +102,7 @@ class UniversalRetrySystem:
             api_key = api_key_obj.key
             keys_tried.append(api_key_obj.masked_key)
             
-            print(f"🔄 Attempt {attempts_made}/{self.max_retries} using key {api_key_obj.masked_key}")
+            print(f"[RETRY] Attempt {attempts_made}/{self.max_retries} using key {api_key_obj.masked_key}")
             
             try:
                 # Execute the API call
@@ -124,7 +124,7 @@ class UniversalRetrySystem:
                     response_time=call_time
                 )
                 
-                print(f"✅ API call successful on attempt {attempts_made} ({call_time:.2f}s)")
+                print(f"[OK] API call successful on attempt {attempts_made} ({call_time:.2f}s)")
                 return RetryResult(
                     success=True,
                     response=response,
@@ -137,7 +137,7 @@ class UniversalRetrySystem:
                 call_time = time.time() - call_start_time
                 error_status, should_retry = self._classify_error(provider, e)
                 
-                print(f"❌ Attempt {attempts_made} failed: {error_status} - {str(e)}")
+                print(f"[FAIL] Attempt {attempts_made} failed: {error_status} - {str(e)}")
                 
                 # Mark key result based on error
                 self.key_pool.mark_key_result(
@@ -154,20 +154,20 @@ class UniversalRetrySystem:
                 
                 # Check if we should continue retrying
                 if not should_retry:
-                    print(f"🛑 Error type '{error_status}' is not retryable, stopping attempts")
+                    print(f"[STOP] Error type '{error_status}' is not retryable, stopping attempts")
                     break
                 
                 if attempts_made < self.max_retries:
                     # Small delay before next attempt
                     retry_delay = min(2 ** (attempts_made - 1), 10)  # Exponential backoff, max 10s
-                    print(f"⏳ Waiting {retry_delay}s before next attempt...")
+                    print(f" Waiting {retry_delay}s before next attempt...")
                     time.sleep(retry_delay)
         
         # All attempts exhausted
         total_time = time.time() - start_time
-        print(f"💀 All {attempts_made} attempts failed for {provider} in {total_time:.2f}s")
-        print(f"💀 Final error: {last_error}")
-        print(f"💀 Keys tried: {', '.join(keys_tried)}")
+        print(f" All {attempts_made} attempts failed for {provider} in {total_time:.2f}s")
+        print(f" Final error: {last_error}")
+        print(f" Keys tried: {', '.join(keys_tried)}")
         
         return RetryResult(
             success=False,
@@ -265,7 +265,7 @@ class UniversalRetrySystem:
         """Update max retries configuration"""
         self.max_retries = max(1, retries)
         self.key_pool.set_max_retries(retries)
-        print(f"🔧 Max retries updated to {self.max_retries}")
+        print(f"[TOOL] Max retries updated to {self.max_retries}")
 
 
 # Example usage functions for each provider

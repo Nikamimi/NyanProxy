@@ -13,23 +13,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def shutdown_handler(signum=None, frame=None):
     """Gracefully handle shutdown"""
-    print("🐱 Shutting down NyanProxy...")
+    print("[CAT] Shutting down NyanProxy...")
     shutdown_start = time.time()
     
     try:
         # Import core components for shutdown
         from core.app import thread_manager, connection_pool, metrics
         
-        print("🧵 Shutting down thread manager...")
+        print("[THREAD] Shutting down thread manager...")
         thread_manager.shutdown_all()
         
-        print("🔗 Closing connection pools...")
+        print("[LINK] Closing connection pools...")
         connection_pool.close_all_sessions()
         
-        print("📊 Final garbage collection...")
+        print("[CHART] Final garbage collection...")
         metrics.force_garbage_collection()
         
-        print("🔥 Shutting down model manager...")
+        print(" Shutting down model manager...")
         from src.services.model_families import model_manager
         model_manager.shutdown()
         
@@ -47,10 +47,10 @@ def shutdown_handler(signum=None, frame=None):
         except Exception:
             pass  # Don't fail shutdown on logging error
             
-        print(f"✅ Clean shutdown completed in {time.time() - shutdown_start:.2f}s")
+        print(f"[OK] Clean shutdown completed in {time.time() - shutdown_start:.2f}s")
         
     except Exception as e:
-        print(f"⚠️ Error during shutdown: {e}")
+        print(f"[WARN] Error during shutdown: {e}")
         # Still attempt to record the shutdown attempt
         try:
             from src.services.firebase_logger import structured_logger

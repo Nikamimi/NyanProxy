@@ -1,5 +1,5 @@
 """
-🐱 NyanProxy Configuration Manager with Firebase Persistence
+[CAT] NyanProxy Configuration Manager with Firebase Persistence
 ==========================================================
 
 This module provides persistent configuration storage using Firebase Realtime Database.
@@ -66,13 +66,13 @@ class ConfigManager:
                 
                 self.db_ref = db.reference(self.firebase_path)
                 self.firebase_enabled = True
-                print(f"🐱 ConfigManager: Firebase initialized at path '{self.firebase_path}'")
+                print(f"[CAT] ConfigManager: Firebase initialized at path '{self.firebase_path}'")
             except Exception as e:
-                print(f"🚫 ConfigManager: Firebase initialization failed: {e}")
+                print(f"[ERROR] ConfigManager: Firebase initialization failed: {e}")
                 self.firebase_enabled = False
         else:
             self.firebase_enabled = False
-            print("🐱 ConfigManager: Running in local-only mode")
+            print("[CAT] ConfigManager: Running in local-only mode")
     
     def _is_cache_valid(self, key: str) -> bool:
         """Check if cached value is still valid"""
@@ -95,7 +95,7 @@ class ConfigManager:
             if self.firebase_enabled and self.db_ref:
                 # Save to Firebase
                 self.db_ref.child('anti_abuse').set(config_dict)
-                print(f"🐱 ConfigManager: Anti-abuse config saved to Firebase")
+                print(f"[CAT] ConfigManager: Anti-abuse config saved to Firebase")
             
             # Update local cache
             self._update_cache('anti_abuse', config_dict)
@@ -103,7 +103,7 @@ class ConfigManager:
             return True
             
         except Exception as e:
-            print(f"🚫 ConfigManager: Failed to save anti-abuse config: {e}")
+            print(f"[ERROR] ConfigManager: Failed to save anti-abuse config: {e}")
             return False
     
     def load_anti_abuse_config(self) -> AntiAbuseConfig:
@@ -127,7 +127,7 @@ class ConfigManager:
             return default_config
             
         except Exception as e:
-            print(f"🚫 ConfigManager: Failed to load anti-abuse config: {e}")
+            print(f"[ERROR] ConfigManager: Failed to load anti-abuse config: {e}")
             # Return default config on error
             return AntiAbuseConfig()
     
@@ -142,7 +142,7 @@ class ConfigManager:
             
             if self.firebase_enabled and self.db_ref:
                 self.db_ref.child('general').child(key).set(config_data)
-                print(f"🐱 ConfigManager: Config '{key}' saved to Firebase")
+                print(f"[CAT] ConfigManager: Config '{key}' saved to Firebase")
             
             # Update local cache
             self._update_cache(f'general_{key}', config_data)
@@ -150,7 +150,7 @@ class ConfigManager:
             return True
             
         except Exception as e:
-            print(f"🚫 ConfigManager: Failed to save config '{key}': {e}")
+            print(f"[ERROR] ConfigManager: Failed to save config '{key}': {e}")
             return False
     
     def load_general_config(self, key: str, default_value: Any = None) -> Any:
@@ -181,7 +181,7 @@ class ConfigManager:
             return default_value
             
         except Exception as e:
-            print(f"🚫 ConfigManager: Failed to load config '{key}': {e}")
+            print(f"[ERROR] ConfigManager: Failed to load config '{key}': {e}")
             return default_value
     
     def get_all_configs(self) -> Dict[str, Any]:
@@ -192,7 +192,7 @@ class ConfigManager:
                 return all_configs or {}
             return {}
         except Exception as e:
-            print(f"🚫 ConfigManager: Failed to get all configs: {e}")
+            print(f"[ERROR] ConfigManager: Failed to get all configs: {e}")
             return {}
     
     def clear_cache(self):
@@ -200,7 +200,7 @@ class ConfigManager:
         with self.lock:
             self.cache.clear()
             self.cache_timestamps.clear()
-        print("🐱 ConfigManager: Cache cleared")
+        print("[CAT] ConfigManager: Cache cleared")
 
 # Global config manager instance
 config_manager = ConfigManager()

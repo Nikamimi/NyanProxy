@@ -42,7 +42,7 @@ class AIKeyManager:
         # Track initialization status
         self.initialized_providers = set()
         
-        print("🚀 AI Key Manager initialized")
+        print("[ROCKET] AI Key Manager initialized")
         print(f"   - Max retries: {self.retry_system.max_retries}")
         print(f"   - Health check interval: {self.key_pool.health_check_interval} minutes")
         print(f"   - Firebase available: {FIREBASE_AVAILABLE and firebase_db is not None}")
@@ -58,28 +58,28 @@ class AIKeyManager:
         Returns:
             Dictionary with initialization results
         """
-        print(f"🔧 Initializing {len(api_keys)} keys for {provider}")
+        print(f"[TOOL] Initializing {len(api_keys)} keys for {provider}")
         
         # Step 1: Perform initial health checks
         healthy_keys = []
         failed_keys = []
         
         for i, key in enumerate(api_keys):
-            print(f"🏥 Health checking key {i+1}/{len(api_keys)} for {provider}...")
+            print(f"[HEALTH] Health checking key {i+1}/{len(api_keys)} for {provider}...")
             
             try:
                 health_result = self.health_manager.check_service_health(provider, key)
                 
                 if health_result.status == 'healthy':
                     healthy_keys.append(key)
-                    print(f"   ✅ Key {key[:8]}... is healthy ({health_result.response_time:.2f}s)")
+                    print(f"   [OK] Key {key[:8]}... is healthy ({health_result.response_time:.2f}s)")
                 else:
                     failed_keys.append({
                         'key': key[:8] + "...",
                         'status': health_result.status,
                         'error': health_result.error_message
                     })
-                    print(f"   ❌ Key {key[:8]}... failed: {health_result.status}")
+                    print(f"   [FAIL] Key {key[:8]}... failed: {health_result.status}")
                     
             except Exception as e:
                 failed_keys.append({
@@ -87,14 +87,14 @@ class AIKeyManager:
                     'status': 'error',
                     'error': str(e)
                 })
-                print(f"   ❌ Key {key[:8]}... error: {e}")
+                print(f"   [FAIL] Key {key[:8]}... error: {e}")
         
         # Step 2: Add healthy keys to pool
         if healthy_keys:
             added_count = self.key_pool.add_keys(provider, healthy_keys)
-            print(f"✅ Added {added_count} healthy keys to {provider} pool")
+            print(f"[OK] Added {added_count} healthy keys to {provider} pool")
         else:
-            print(f"⚠️ No healthy keys found for {provider}")
+            print(f"[WARN] No healthy keys found for {provider}")
         
         # Mark provider as initialized
         self.initialized_providers.add(provider)
@@ -109,7 +109,7 @@ class AIKeyManager:
             'pool_status': self.key_pool.get_pool_status(provider)
         }
         
-        print(f"📊 {provider} initialization complete:")
+        print(f"[CHART] {provider} initialization complete:")
         print(f"   - Healthy: {len(healthy_keys)}/{len(api_keys)}")
         print(f"   - Failed: {len(failed_keys)}/{len(api_keys)}")
         
@@ -152,14 +152,14 @@ class AIKeyManager:
     
     def force_health_check(self, provider: str = None) -> Dict[str, Any]:
         """Force immediate health check on all or specific provider keys"""
-        print("🏥 Forcing immediate health check...")
+        print("[HEALTH] Forcing immediate health check...")
         
         if provider:
             # Check specific provider
             if provider not in self.key_pool.key_pools:
                 return {'error': f'Provider {provider} not found'}
             
-            print(f"🏥 Checking {provider} keys...")
+            print(f"[HEALTH] Checking {provider} keys...")
             # We'll need to implement provider-specific health checks in key_pool_manager
             # For now, trigger the general health check
             self.key_pool.perform_health_checks()
@@ -171,7 +171,7 @@ class AIKeyManager:
     
     def add_new_keys(self, provider: str, new_keys: List[str]) -> Dict[str, Any]:
         """Add new keys to an existing provider pool with health checks"""
-        print(f"🔑 Adding {len(new_keys)} new keys to {provider}")
+        print(f"[KEY] Adding {len(new_keys)} new keys to {provider}")
         
         # Health check new keys before adding
         healthy_keys = []
@@ -183,14 +183,14 @@ class AIKeyManager:
                 
                 if health_result.status == 'healthy':
                     healthy_keys.append(key)
-                    print(f"   ✅ New key {key[:8]}... is healthy")
+                    print(f"   [OK] New key {key[:8]}... is healthy")
                 else:
                     failed_keys.append({
                         'key': key[:8] + "...",
                         'status': health_result.status,
                         'error': health_result.error_message
                     })
-                    print(f"   ❌ New key {key[:8]}... failed: {health_result.status}")
+                    print(f"   [FAIL] New key {key[:8]}... failed: {health_result.status}")
                     
             except Exception as e:
                 failed_keys.append({
@@ -198,7 +198,7 @@ class AIKeyManager:
                     'status': 'error',
                     'error': str(e)
                 })
-                print(f"   ❌ New key {key[:8]}... error: {e}")
+                print(f"   [FAIL] New key {key[:8]}... error: {e}")
         
         # Add healthy keys to pool
         added_count = 0

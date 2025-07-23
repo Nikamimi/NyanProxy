@@ -119,7 +119,7 @@ class KeyPoolManager:
         # Start background health monitoring
         self._start_health_monitoring()
         
-        print(f"🔑 Key Pool Manager initialized with MAX_RETRIES={self.max_retries}")
+        print(f"[KEY] Key Pool Manager initialized with MAX_RETRIES={self.max_retries}")
     
     def _start_health_monitoring(self):
         """Start background thread for periodic health checks"""
@@ -133,7 +133,7 @@ class KeyPoolManager:
         
         monitor_thread = threading.Thread(target=health_monitor, daemon=True)
         monitor_thread.start()
-        print(f"🏥 Health monitoring started (every {self.health_check_interval} minutes)")
+        print(f"[HEALTH] Health monitoring started (every {self.health_check_interval} minutes)")
     
     def add_keys(self, provider: str, keys: List[str]) -> int:
         """Add API keys to the pool for a provider"""
@@ -150,9 +150,9 @@ class KeyPoolManager:
                     api_key = APIKey(key=key, provider=provider)
                     self.key_pools[provider].append(api_key)
                     added_count += 1
-                    print(f"🔑 Added key {api_key.masked_key} to {provider} pool")
+                    print(f"[KEY] Added key {api_key.masked_key} to {provider} pool")
             
-            print(f"🔑 Added {added_count} new keys to {provider} pool (total: {len(self.key_pools[provider])})")
+            print(f"[KEY] Added {added_count} new keys to {provider} pool (total: {len(self.key_pools[provider])})")
             return added_count
     
     def get_healthy_key(self, provider: str) -> Optional[APIKey]:
@@ -165,7 +165,7 @@ class KeyPoolManager:
             healthy_keys = [k for k in self.key_pools[provider] if k.is_usable()]
             
             if not healthy_keys:
-                print(f"⚠️ No healthy keys available for {provider}")
+                print(f"[WARN] No healthy keys available for {provider}")
                 return None
             
             # Return the key with best success rate and least recent usage
@@ -194,16 +194,16 @@ class KeyPoolManager:
                     break
             
             if not api_key:
-                print(f"⚠️ Key not found in pool: {key[:8]}...")
+                print(f"[WARN] Key not found in pool: {key[:8]}...")
                 return
             
             if success:
                 api_key.mark_success(response_time)
-                print(f"✅ Key {api_key.masked_key} successful (success rate: {api_key.get_success_rate():.1f}%)")
+                print(f"[OK] Key {api_key.masked_key} successful (success rate: {api_key.get_success_rate():.1f}%)")
             else:
                 self.stats['total_failures'] += 1
                 api_key.mark_error(error_status, error_message)
-                print(f"❌ Key {api_key.masked_key} failed: {error_status} - {error_message}")
+                print(f"[FAIL] Key {api_key.masked_key} failed: {error_status} - {error_message}")
                 
                 # Remove key if it should be permanently removed
                 if api_key.should_be_removed():
@@ -219,8 +219,8 @@ class KeyPoolManager:
             self.removed_keys[provider].append(api_key)
             self.stats['keys_removed'] += 1
             
-            print(f"🗑️ REMOVED key {api_key.masked_key} from {provider} pool (reason: {api_key.status.value})")
-            print(f"🔑 {provider} pool now has {len(self.key_pools[provider])} healthy keys")
+            print(f"[DELETE] REMOVED key {api_key.masked_key} from {provider} pool (reason: {api_key.status.value})")
+            print(f"[KEY] {provider} pool now has {len(self.key_pools[provider])} healthy keys")
             
             # Save removal to Firebase for dashboard visibility
             self._save_removed_key_async(provider, api_key)
@@ -231,14 +231,14 @@ class KeyPoolManager:
     
     def perform_health_checks(self):
         """Perform health checks on all keys"""
-        print(f"🏥 Starting health checks at {datetime.now()}")
+        print(f"[HEALTH] Starting health checks at {datetime.now()}")
         
         with self.lock:
             total_checked = 0
             total_removed = 0
             
             for provider, keys in self.key_pools.items():
-                print(f"🏥 Checking {len(keys)} keys for {provider}")
+                print(f"[HEALTH] Checking {len(keys)} keys for {provider}")
                 
                 keys_to_check = keys.copy()  # Create copy to avoid modification during iteration
                 
@@ -265,7 +265,7 @@ class KeyPoolManager:
                                 api_key.status = KeyStatus.TEMPORARILY_DISABLED
                             
                             api_key.last_error = result.error_message
-                            print(f"🔴 {api_key.masked_key} {result.status}: {result.error_message}")
+                            print(f"[RED] {api_key.masked_key} {result.status}: {result.error_message}")
                             
                             # Remove if permanently failed
                             if api_key.should_be_removed():
@@ -273,12 +273,12 @@ class KeyPoolManager:
                                 total_removed += 1
                     
                     except Exception as e:
-                        print(f"❌ Health check error for {api_key.masked_key}: {e}")
+                        print(f"[FAIL] Health check error for {api_key.masked_key}: {e}")
                         api_key.status = KeyStatus.TEMPORARILY_DISABLED
                         api_key.last_error = str(e)
             
             self.stats['last_health_check'] = datetime.now()
-            print(f"🏥 Health check complete: {total_checked} checked, {total_removed} removed")
+            print(f"[HEALTH] Health check complete: {total_checked} checked, {total_removed} removed")
     
     def get_pool_status(self, provider: str = None) -> Dict:
         """Get status of key pools"""
@@ -407,7 +407,7 @@ class KeyPoolManager:
                     api_key.status = KeyStatus.INVALID
                     api_key.last_error = "Manually removed"
                     self._remove_key_from_pool(provider, api_key)
-                    print(f"🔧 Manually removed key {api_key.masked_key} from {provider} pool")
+                    print(f"[TOOL] Manually removed key {api_key.masked_key} from {provider} pool")
                     return True
             
             return False
@@ -419,4 +419,4 @@ class KeyPoolManager:
     def set_max_retries(self, retries: int):
         """Set the maximum number of retries"""
         self.max_retries = max(1, retries)
-        print(f"🔧 Max retries set to {self.max_retries}")
+        print(f"[TOOL] Max retries set to {self.max_retries}")

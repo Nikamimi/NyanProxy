@@ -1,11 +1,11 @@
 """
-🔥 Firebase-based Event Logging System for NyanProxy
+ Firebase-based Event Logging System for NyanProxy
 ===================================================
 
 This module provides a comprehensive event logging system using Firebase Realtime Database
 for persistent, scalable logging across deployments.
 
-🔐 PRIVACY NOTICE:
+ PRIVACY NOTICE:
 - This logger only tracks USAGE METRICS and ANALYTICS
 - NO PROMPT CONTENT or RESPONSE CONTENT is ever logged
 - Only metadata like token counts, timestamps, and model usage is stored

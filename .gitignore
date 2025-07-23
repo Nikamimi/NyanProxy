@@ -164,5 +164,22 @@ FastAPIMigrationPlan.txt
 # Development and testing files (archived)
 .archive/
 
+# Test files created during development
+test_*.py
+simple_test.py
+
+# Emoji backup files from refactoring
+*.emoji_backup
+
+# Empty or temporary files
+nul
+
+# FastAPI migration artifacts
+fastapi.log
+FastAPIMigrationPlan.txt
+
+# Development and testing scripts
+remove_emojis.py
+
 # Claude Code project instructions (sensitive)
 CLAUDE.md

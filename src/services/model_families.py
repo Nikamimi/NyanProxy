@@ -1,5 +1,5 @@
 """
-🐱 Model Families System for NyanProxy
+[CAT] Model Families System for NyanProxy
 =====================================
 
 This module provides comprehensive model management with:
@@ -60,14 +60,14 @@ class ModelInfo:
     def get_cat_emoji(self) -> str:
         """Get cat emoji based on personality"""
         personalities = {
-            "curious": "🙀",
-            "playful": "😸",
-            "sleepy": "😴",
-            "grumpy": "😾",
-            "smart": "🤓",
-            "fast": "💨"
+            "curious": "",
+            "playful": "",
+            "sleepy": "",
+            "grumpy": "",
+            "smart": "",
+            "fast": ""
         }
-        return personalities.get(self.cat_personality, "😺")
+        return personalities.get(self.cat_personality, "")
     
     def validate_token_limits(self, input_tokens: int, output_tokens: int = None) -> tuple[bool, str]:
         """Validate if request respects token limits"""
@@ -170,14 +170,14 @@ class ModelConfig:
     def get_cat_emoji(self) -> str:
         """Get cat emoji based on personality"""
         emojis = {
-            'curious': '🙀',
-            'playful': '😸',
-            'sleepy': '😴',
-            'grumpy': '😾',
-            'smart': '🤓',
-            'fast': '💨'
+            'curious': '',
+            'playful': '',
+            'sleepy': '',
+            'grumpy': '',
+            'smart': '',
+            'fast': ''
         }
-        return emojis.get(self.cat_personality, '😺')
+        return emojis.get(self.cat_personality, '')
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for Firebase storage"""
@@ -214,7 +214,7 @@ class ModelConfig:
 
 class ModelFamilyManager:
     """
-    🐾 Model Family Management System
+     Model Family Management System
     
     Manages whitelisted models for each AI service and tracks individual usage.
     """
@@ -277,7 +277,7 @@ class ModelFamilyManager:
         self._last_save_time = datetime.now()  # Track last save time
         # Save interval configurable via environment variable, default 1 minute (60 seconds)
         self._save_interval_minutes = int(os.getenv('GLOBAL_STATS_SAVE_INTERVAL_MINUTES', 1))
-        print(f"🐱 Global stats will be saved to Firebase every {self._save_interval_minutes} minutes")
+        print(f"[CAT] Global stats will be saved to Firebase every {self._save_interval_minutes} minutes")
         
         # Initialize with default models
         self._initialize_default_models()
@@ -316,7 +316,7 @@ class ModelFamilyManager:
         for provider in AIProvider:
             self.whitelisted_models[provider] = set()
         
-        print("🗑️ Initialized clean model system - no hardcoded defaults")
+        print("[DELETE] Initialized clean model system - no hardcoded defaults")
     
     def _initialize_firebase(self):
         """Initialize Firebase connection for persistent storage"""
@@ -350,7 +350,7 @@ class ModelFamilyManager:
                         # Clean the list: remove None values and duplicates
                         clean_list = [mid for mid in model_list if mid is not None]
                         self.whitelisted_models[provider] = set(clean_list)
-                        print(f"📥 Loaded {len(clean_list)} models for {provider_str}: {sorted(clean_list)}")
+                        print(f" Loaded {len(clean_list)} models for {provider_str}: {sorted(clean_list)}")
                     except ValueError:
                         print(f"Unknown provider in config: {provider_str}")
                 
@@ -382,7 +382,7 @@ class ModelFamilyManager:
                                 # Clean the list: remove None values and duplicates
                                 clean_list = [mid for mid in model_list if mid is not None]
                                 self.whitelisted_models[provider] = set(clean_list)
-                                print(f"🔥 Firebase loaded {len(clean_list)} models for {provider_str}: {sorted(clean_list)}")
+                                print(f" Firebase loaded {len(clean_list)} models for {provider_str}: {sorted(clean_list)}")
                             except ValueError:
                                 print(f"Unknown provider in Firebase config: {provider_str}")
                         
@@ -417,9 +417,9 @@ class ModelFamilyManager:
             'last_updated': datetime.now().isoformat()
         }
         
-        print(f"💾 Saving configuration to Firebase/file:")
+        print(f" Saving configuration to Firebase/file:")
         for provider, models in config['whitelisted_models'].items():
-            print(f"💾   {provider}: {models}")
+            print(f"   {provider}: {models}")
         
         if self.firebase_db:
             try:
@@ -507,19 +507,19 @@ class ModelFamilyManager:
                 is_whitelisted = model_id in whitelisted
                 
                 # Debug logging
-                print(f"🔍 WHITELIST CHECK: {provider.value} model '{model_id}'")
-                print(f"🔍 WHITELIST CHECK: Whitelisted models for {provider.value}: {sorted(whitelisted)}")
-                print(f"🔍 WHITELIST CHECK: Direct match: {is_whitelisted}")
+                print(f"[SEARCH] WHITELIST CHECK: {provider.value} model '{model_id}'")
+                print(f"[SEARCH] WHITELIST CHECK: Whitelisted models for {provider.value}: {sorted(whitelisted)}")
+                print(f"[SEARCH] WHITELIST CHECK: Direct match: {is_whitelisted}")
                 
                 if not is_whitelisted:
                     # Check if any whitelisted model has this as its actual model_id
                     for whitelisted_id in whitelisted:
                         stored_model = self.models.get(whitelisted_id)
                         if stored_model and stored_model.model_id == model_id:
-                            print(f"🔍 WHITELIST CHECK: Found match via stored model {whitelisted_id} -> {model_id}")
+                            print(f"[SEARCH] WHITELIST CHECK: Found match via stored model {whitelisted_id} -> {model_id}")
                             return True
                 
-                print(f"🔍 WHITELIST CHECK: Final result: {is_whitelisted}")
+                print(f"[SEARCH] WHITELIST CHECK: Final result: {is_whitelisted}")
                 return is_whitelisted
             except Exception as e:
                 import logging
@@ -547,7 +547,7 @@ class ModelFamilyManager:
         """Add a model to the whitelist"""
         with self.lock:
             if model_id not in self.models:
-                print(f"❌ Cannot add {model_id} to whitelist: model not found")
+                print(f"[FAIL] Cannot add {model_id} to whitelist: model not found")
                 return False
             
             if provider not in self.whitelisted_models:
@@ -581,7 +581,7 @@ class ModelFamilyManager:
             # Remove duplicates by converting to set
             unique_ids = set(clean_ids)
             
-            print(f"🔧 Setting whitelist for {provider.value}: {sorted(unique_ids)}")
+            print(f"[TOOL] Setting whitelist for {provider.value}: {sorted(unique_ids)}")
             self.whitelisted_models[provider] = unique_ids
             self._save_configuration()
             return len(unique_ids) == len([mid for mid in model_ids if mid is not None])
@@ -595,24 +595,24 @@ class ModelFamilyManager:
                 # Convert to list, filter None, remove duplicates, convert back to set
                 clean_models = set(filter(None, models))
                 if len(clean_models) != original_count:
-                    print(f"🧹 Cleaned {provider.value}: {original_count} -> {len(clean_models)} models")
+                    print(f"[CLEAN] Cleaned {provider.value}: {original_count} -> {len(clean_models)} models")
                     self.whitelisted_models[provider] = clean_models
                     cleaned = True
             
             if cleaned:
-                print("🧹 Saving cleaned whitelist configuration...")
+                print("[CLEAN] Saving cleaned whitelist configuration...")
                 self._save_configuration_sync()  # Use sync to ensure it's saved
             
             return cleaned
     
     def _apply_default_whitelists_if_needed(self):
         """No-op - system starts completely empty, models added via admin interface only"""
-        print("✅ Clean start - no default models. Use admin interface to add models.")
+        print("[OK] Clean start - no default models. Use admin interface to add models.")
     
     def _load_model_configs(self):
         """Load model configurations from Firebase model_config structure"""
         if not self.firebase_db:
-            print("🔥 No Firebase connection - model configs will be empty")
+            print(" No Firebase connection - model configs will be empty")
             return
         
         try:
@@ -658,13 +658,13 @@ class ModelFamilyManager:
                                                 cat_personality=model_config.cat_personality
                                             )
                                     
-                                    print(f"🔥 Loaded {model_name} ({provider_key}): {model_config.status}, {len(model_config.model_ids)} model_ids")
+                                    print(f" Loaded {model_name} ({provider_key}): {model_config.status}, {len(model_config.model_ids)} model_ids")
                                 except Exception as e:
-                                    print(f"❌ Error loading model {model_name}: {e}")
+                                    print(f"[FAIL] Error loading model {model_name}: {e}")
                         
-                        print(f"✅ Loaded {len(config_data)} provider model configs from Firebase")
+                        print(f"[OK] Loaded {len(config_data)} provider model configs from Firebase")
                     else:
-                        print("🔥 No model_config found in Firebase - starting with empty configuration")
+                        print(" No model_config found in Firebase - starting with empty configuration")
                 except Exception as e:
                     print(f"Failed to load model configs in thread: {e}")
             
@@ -683,27 +683,27 @@ class ModelFamilyManager:
     def _save_model_configs(self):
         """Save model configurations to Firebase model_config structure"""
         if not self.firebase_db:
-            print("❌ No Firebase database connection")
+            print("[FAIL] No Firebase database connection")
             return
         
         try:
-            print(f"🔍 Starting Firebase save with {len(self.model_configs)} providers")
+            print(f"[SEARCH] Starting Firebase save with {len(self.model_configs)} providers")
             config_ref = self.firebase_db.child('model_config')
             config_data = {}
             
             for provider_key, provider_models in self.model_configs.items():
-                print(f"🔍 Processing provider {provider_key} with {len(provider_models)} models")
+                print(f"[SEARCH] Processing provider {provider_key} with {len(provider_models)} models")
                 config_data[provider_key] = {}
                 for model_name, model_config in provider_models.items():
                     # Sanitize model name for Firebase key
                     sanitized_model_name = self.sanitize_key(model_name)
                     config_dict = model_config.to_dict()
                     config_data[provider_key][sanitized_model_name] = config_dict
-                    print(f"🔍 Added {provider_key}[{sanitized_model_name}] to save data")
+                    print(f"[SEARCH] Added {provider_key}[{sanitized_model_name}] to save data")
             
-            print(f"🔍 About to save config_data: {config_data}")
+            print(f"[SEARCH] About to save config_data: {config_data}")
             config_ref.set(config_data)
-            print(f"✅ Saved {len(config_data)} provider model configs to Firebase")
+            print(f"[OK] Saved {len(config_data)} provider model configs to Firebase")
             
         except Exception as e:
             print(f"Failed to save model configs to Firebase: {e}")
@@ -713,17 +713,17 @@ class ModelFamilyManager:
     def add_model_config(self, provider: AIProvider, model_name: str, model_config: ModelConfig) -> bool:
         """Add a new model configuration"""
         try:
-            print(f"🔍 add_model_config called: provider={provider.value}, model_name={model_name}")
+            print(f"[SEARCH] add_model_config called: provider={provider.value}, model_name={model_name}")
             with self.lock:
                 provider_key = provider.value
-                print(f"🔍 Provider key: {provider_key}")
+                print(f"[SEARCH] Provider key: {provider_key}")
                 if provider_key not in self.model_configs:
                     self.model_configs[provider_key] = {}
-                    print(f"🔍 Created new provider entry for {provider_key}")
+                    print(f"[SEARCH] Created new provider entry for {provider_key}")
                 
                 model_config.updated_at = datetime.now()
                 self.model_configs[provider_key][model_name] = model_config
-                print(f"🔍 Added model config to memory: {provider_key}[{model_name}]")
+                print(f"[SEARCH] Added model config to memory: {provider_key}[{model_name}]")
                 
                 # Update legacy system for backward compatibility
                 if model_config.status == "enabled":
@@ -745,9 +745,9 @@ class ModelFamilyManager:
                             cat_personality=model_config.cat_personality
                         )
                 
-                print(f"🔍 About to save model configs to Firebase")
+                print(f"[SEARCH] About to save model configs to Firebase")
                 self._save_model_configs()
-                print(f"🔍 Firebase save completed, returning True")
+                print(f"[SEARCH] Firebase save completed, returning True")
                 return True
                 
         except Exception as e:
@@ -776,7 +776,7 @@ class ModelFamilyManager:
                             self.whitelisted_models[provider].discard(model_id)
                     
                     self._save_model_configs()
-                    print(f"🔄 Updated {model_name} status: {old_status} -> {status}")
+                    print(f"[RETRY] Updated {model_name} status: {old_status} -> {status}")
                     return True
                 
                 return False
@@ -810,7 +810,7 @@ class ModelFamilyManager:
                     del self.model_configs[provider_key][model_name]
                     
                     self._save_model_configs()
-                    print(f"🗑️ Deleted model config: {model_name}")
+                    print(f"[DELETE] Deleted model config: {model_name}")
                     return True
                 
                 return False
@@ -864,7 +864,7 @@ class ModelFamilyManager:
             time_since_last_save = (now - self._last_save_time).total_seconds() / 60  # Convert to minutes
             
             if time_since_last_save >= self._save_interval_minutes:
-                print(f"🐱 Saving global stats to Firebase (last saved {time_since_last_save:.1f} minutes ago)")
+                print(f"[CAT] Saving global stats to Firebase (last saved {time_since_last_save:.1f} minutes ago)")
                 self._save_global_totals()
                 self._save_global_usage_stats()
                 self._last_save_time = now
@@ -874,11 +874,11 @@ class ModelFamilyManager:
     def set_save_interval(self, minutes: int):
         """Set the save interval in minutes"""
         self._save_interval_minutes = max(1, minutes)  # Minimum 1 minute
-        print(f"🐱 Global stats save interval set to {self._save_interval_minutes} minutes")
+        print(f"[CAT] Global stats save interval set to {self._save_interval_minutes} minutes")
     
     def force_save_global_stats(self):
         """Force immediate save of global statistics"""
-        print("🐱 Force saving global stats to Firebase")
+        print("[CAT] Force saving global stats to Firebase")
         self._save_global_totals()
         self._save_global_usage_stats()
         self._last_save_time = datetime.now()
@@ -911,7 +911,7 @@ class ModelFamilyManager:
                                 data['last_request'] = None
                         
                         loaded_totals[0] = data
-                        print(f"🐱 Loaded global totals from Firebase: {data.get('total_requests', 0)} requests")
+                        print(f"[CAT] Loaded global totals from Firebase: {data.get('total_requests', 0)} requests")
                 except Exception as e:
                     print(f"Failed to load global totals from Firebase: {e}")
             
@@ -948,7 +948,7 @@ class ModelFamilyManager:
                     
                     totals_ref = self.firebase_db.child('global_totals')
                     totals_ref.set(totals)
-                    print(f"🐱 Saved global totals to Firebase: {totals.get('total_requests', 0)} requests")
+                    print(f"[CAT] Saved global totals to Firebase: {totals.get('total_requests', 0)} requests")
                 except Exception as e:
                     print(f"Failed to save global totals to Firebase: {e}")
             
@@ -985,7 +985,7 @@ class ModelFamilyManager:
                                 loaded_stats[0][model_id] = usage_stats
                         
                         if loaded_stats[0]:
-                            print(f"🐱 Loaded global usage stats from Firebase: {len(loaded_stats[0])} models")
+                            print(f"[CAT] Loaded global usage stats from Firebase: {len(loaded_stats[0])} models")
                 except Exception as e:
                     print(f"Failed to load global usage stats from Firebase: {e}")
                     import traceback
@@ -1006,7 +1006,7 @@ class ModelFamilyManager:
     def _save_global_usage_stats(self):
         """Save global usage stats to Firebase (async)"""
         if not self.firebase_db:
-            print("🐱 [DEBUG] No Firebase DB connection, skipping save")
+            print("[CAT] [DEBUG] No Firebase DB connection, skipping save")
             return
             
         try:
@@ -1024,7 +1024,7 @@ class ModelFamilyManager:
                     
                     stats_ref = self.firebase_db.child('global_usage_stats')
                     stats_ref.set(stats_to_save)
-                    print(f"🐱 Saved global usage stats to Firebase: {len(stats_to_save)} models")
+                    print(f"[CAT] Saved global usage stats to Firebase: {len(stats_to_save)} models")
                 except Exception as e:
                     print(f"Failed to save global usage stats to Firebase: {e}")
                     import traceback
@@ -1058,7 +1058,7 @@ class ModelFamilyManager:
                     stats_ref = self.firebase_db.child('global_usage_stats')
                     stats_ref.set(stats_to_save)
                     success[0] = True
-                    print(f"🐱 Saved global usage stats to Firebase (sync): {len(stats_to_save)} models")
+                    print(f"[CAT] Saved global usage stats to Firebase (sync): {len(stats_to_save)} models")
                 except Exception as e:
                     print(f"Failed to save global usage stats to Firebase (sync): {e}")
             
@@ -1075,11 +1075,11 @@ class ModelFamilyManager:
     
     def shutdown(self):
         """Save all data before shutdown"""
-        print("🐱 Saving model usage data before shutdown...")
+        print("[CAT] Saving model usage data before shutdown...")
         try:
             self.save_usage_stats_sync()
             self.force_save_global_stats()  # Use force save for immediate shutdown saving
-            print("🐱 Model usage data saved successfully")
+            print("[CAT] Model usage data saved successfully")
         except Exception as e:
             print(f"Error saving data during shutdown: {e}")
     
@@ -1202,14 +1202,14 @@ class ModelFamilyManager:
         with self.lock:
             # Check if model already exists
             if model_info.model_id in self.models:
-                print(f"❌ Model {model_info.model_id} already exists")
+                print(f"[FAIL] Model {model_info.model_id} already exists")
                 return False
             
-            print(f"🚀 Adding custom model: {model_info.model_id} to provider {model_info.provider.value}")
+            print(f"[ROCKET] Adding custom model: {model_info.model_id} to provider {model_info.provider.value}")
             
             # Add the model to in-memory storage first
             self.models[model_info.model_id] = model_info
-            print(f"✅ Added {model_info.model_id} to in-memory storage")
+            print(f"[OK] Added {model_info.model_id} to in-memory storage")
             
             # Auto-whitelist if requested
             if auto_whitelist:
@@ -1217,20 +1217,20 @@ class ModelFamilyManager:
                 if provider not in self.whitelisted_models:
                     self.whitelisted_models[provider] = set()
                 self.whitelisted_models[provider].add(model_info.model_id)
-                print(f"✅ Auto-whitelisted {model_info.model_id} for provider {provider.value}")
+                print(f"[OK] Auto-whitelisted {model_info.model_id} for provider {provider.value}")
             
             try:
                 # Save synchronously to ensure data persistence before returning success
-                print(f"💾 Saving configuration and model data...")
+                print(f" Saving configuration and model data...")
                 self._save_configuration_sync()
-                print(f"✅ Configuration saved")
+                print(f"[OK] Configuration saved")
                 self._save_custom_models_sync()
-                print(f"✅ Custom models saved")
+                print(f"[OK] Custom models saved")
                 
-                print(f"🎉 Successfully added custom model: {model_info.model_id} to provider {model_info.provider.value}")
+                print(f"[SUCCESS] Successfully added custom model: {model_info.model_id} to provider {model_info.provider.value}")
                 return True
             except Exception as e:
-                print(f"❌ Failed to save model data: {e}")
+                print(f"[FAIL] Failed to save model data: {e}")
                 import traceback
                 traceback.print_exc()
                 
@@ -1354,19 +1354,19 @@ class ModelFamilyManager:
                                 existing_models = provider_ref.get()
                                 if existing_models is None:
                                     existing_models = {}
-                                    print(f"🆕 Creating new model_config/{provider} structure")
+                                    print(f" Creating new model_config/{provider} structure")
                                 else:
                                     # Handle migration from old structure with "models" key
                                     if isinstance(existing_models, dict) and 'models' in existing_models:
-                                        print(f"🔄 Migrating from old structure with 'models' key")
+                                        print(f"[RETRY] Migrating from old structure with 'models' key")
                                         existing_models = existing_models.get('models', {})
                                     elif isinstance(existing_models, dict):
-                                        print(f"📁 Found existing model_config/{provider} data")
+                                        print(f" Found existing model_config/{provider} data")
                                     else:
-                                        print(f"⚠️ Unexpected data type, creating new: {type(existing_models)}")
+                                        print(f"[WARN] Unexpected data type, creating new: {type(existing_models)}")
                                         existing_models = {}
                             except Exception as get_error:
-                                print(f"⚠️ Error getting existing data, creating new: {get_error}")
+                                print(f"[WARN] Error getting existing data, creating new: {get_error}")
                                 existing_models = {}
                             
                             # Merge existing models with new models
@@ -1374,11 +1374,11 @@ class ModelFamilyManager:
                             
                             # Save directly as model_config/{provider} = {model_key: model_data, ...}
                             provider_ref.set(existing_models)
-                            print(f"🐱 Saved {len(models)} models to model_config/{provider} (total: {len(existing_models)})")
+                            print(f"[CAT] Saved {len(models)} models to model_config/{provider} (total: {len(existing_models)})")
                         
-                        print(f"🎉 Successfully saved model config to Firebase: {len(custom_models)} models across {len(models_by_provider)} providers")
+                        print(f"[SUCCESS] Successfully saved model config to Firebase: {len(custom_models)} models across {len(models_by_provider)} providers")
                     except Exception as e:
-                        print(f"❌ Failed to save model config in thread: {e}")
+                        print(f"[FAIL] Failed to save model config in thread: {e}")
                         import traceback
                         traceback.print_exc()
                 
@@ -1406,7 +1406,7 @@ class ModelFamilyManager:
     
     def _save_custom_models_sync(self):
         """Save custom models synchronously using model_config structure"""
-        print(f"🔄 [SYNC] Starting _save_custom_models_sync...")
+        print(f"[RETRY] [SYNC] Starting _save_custom_models_sync...")
         
         try:
             # Get custom models without acquiring lock (since we're already in a locked context)
@@ -1418,7 +1418,7 @@ class ModelFamilyManager:
                 model for model_id, model in self.models.items()
                 if model_id not in default_model_ids
             ]
-            print(f"📋 [SYNC] Found {len(custom_models)} custom models to save")
+            print(f" [SYNC] Found {len(custom_models)} custom models to save")
             
             # Organize models by provider with sanitized keys
             models_by_provider = {}
@@ -1433,17 +1433,17 @@ class ModelFamilyManager:
                 model_dict = asdict(model)
                 model_dict['provider'] = model.provider.value  # Convert enum to string
                 models_by_provider[provider_key][sanitized_key] = model_dict
-                print(f"📝 [SYNC] Prepared model {model.model_id} (key: {sanitized_key}) for provider {provider_key}")
+                print(f" [SYNC] Prepared model {model.model_id} (key: {sanitized_key}) for provider {provider_key}")
             
-            print(f"📊 [SYNC] Models organized by provider: {list(models_by_provider.keys())}")
+            print(f"[CHART] [SYNC] Models organized by provider: {list(models_by_provider.keys())}")
         except Exception as e:
-            print(f"❌ [SYNC] Error preparing model data: {e}")
+            print(f"[FAIL] [SYNC] Error preparing model data: {e}")
             import traceback
             traceback.print_exc()
             return
         
         if self.firebase_db:
-            print(f"🔥 [SYNC] Firebase is available, attempting save...")
+            print(f" [SYNC] Firebase is available, attempting save...")
             try:
                 import threading
                 success = [False]
@@ -1451,53 +1451,53 @@ class ModelFamilyManager:
                 
                 def save_model_config():
                     try:
-                        print(f"🚀 [SYNC] Starting Firebase save thread...")
+                        print(f"[ROCKET] [SYNC] Starting Firebase save thread...")
                         # Save each provider's models directly to model_config/{provider}/{model_key}
                         for provider, models in models_by_provider.items():
-                            print(f"🔥 [SYNC] Processing provider: {provider} with {len(models)} models")
+                            print(f" [SYNC] Processing provider: {provider} with {len(models)} models")
                             provider_ref = self.firebase_db.child(f'model_config/{provider}')
                             
                             # Get existing provider data (should be a dict of models now)
                             try:
-                                print(f"📡 [SYNC] Getting existing data from model_config/{provider}...")
+                                print(f" [SYNC] Getting existing data from model_config/{provider}...")
                                 existing_models = provider_ref.get()
                                 if existing_models is None:
                                     existing_models = {}
-                                    print(f"🆕 [SYNC] Creating new model_config/{provider} structure")
+                                    print(f" [SYNC] Creating new model_config/{provider} structure")
                                 else:
                                     # Handle migration from old structure with "models" key
                                     if isinstance(existing_models, dict) and 'models' in existing_models:
-                                        print(f"🔄 [SYNC] Migrating from old structure with 'models' key")
+                                        print(f"[RETRY] [SYNC] Migrating from old structure with 'models' key")
                                         existing_models = existing_models.get('models', {})
                                     elif isinstance(existing_models, dict):
-                                        print(f"📁 [SYNC] Found existing model_config/{provider} data: {list(existing_models.keys())}")
+                                        print(f" [SYNC] Found existing model_config/{provider} data: {list(existing_models.keys())}")
                                     else:
-                                        print(f"⚠️ [SYNC] Unexpected data type, creating new: {type(existing_models)}")
+                                        print(f"[WARN] [SYNC] Unexpected data type, creating new: {type(existing_models)}")
                                         existing_models = {}
                             except Exception as get_error:
-                                print(f"⚠️ [SYNC] Error getting existing data, creating new: {get_error}")
+                                print(f"[WARN] [SYNC] Error getting existing data, creating new: {get_error}")
                                 existing_models = {}
                             
-                            print(f"📋 [SYNC] Existing models in {provider}: {list(existing_models.keys()) if existing_models else 'None'}")
+                            print(f" [SYNC] Existing models in {provider}: {list(existing_models.keys()) if existing_models else 'None'}")
                             
                             # Merge existing models with new models
                             existing_models.update(models)
-                            print(f"📋 [SYNC] After merge, {provider} has {len(existing_models)} total models")
+                            print(f" [SYNC] After merge, {provider} has {len(existing_models)} total models")
                             
                             # Save directly as model_config/{provider} = {model_key: model_data, ...}
-                            print(f"💾 [SYNC] Setting data for model_config/{provider}...")
+                            print(f" [SYNC] Setting data for model_config/{provider}...")
                             provider_ref.set(existing_models)
-                            print(f"🐱 [SYNC] Saved {len(models)} models to model_config/{provider} (total: {len(existing_models)})")
+                            print(f"[CAT] [SYNC] Saved {len(models)} models to model_config/{provider} (total: {len(existing_models)})")
                         
                         success[0] = True
-                        print(f"🎉 [SYNC] Successfully saved model config to Firebase: {len(custom_models)} models across {len(models_by_provider)} providers")
+                        print(f"[SUCCESS] [SYNC] Successfully saved model config to Firebase: {len(custom_models)} models across {len(models_by_provider)} providers")
                     except Exception as e:
                         error_msg[0] = str(e)
-                        print(f"❌ [SYNC] Failed to save model config to Firebase: {e}")
+                        print(f"[FAIL] [SYNC] Failed to save model config to Firebase: {e}")
                         import traceback
                         traceback.print_exc()
                 
-                print(f"🧵 [SYNC] Starting Firebase save thread...")
+                print(f"[THREAD] [SYNC] Starting Firebase save thread...")
                 # Run with timeout protection
                 save_thread = threading.Thread(target=save_model_config)
                 save_thread.daemon = True
@@ -1505,21 +1505,21 @@ class ModelFamilyManager:
                 save_thread.join(timeout=10.0)  # Increased timeout to 10 seconds
                 
                 if save_thread.is_alive():
-                    print("⏰ [SYNC] Firebase model config save timed out after 10 seconds, falling back to local file")
+                    print(" [SYNC] Firebase model config save timed out after 10 seconds, falling back to local file")
                 elif not success[0]:
-                    print(f"❌ [SYNC] Firebase save failed: {error_msg[0]}")
+                    print(f"[FAIL] [SYNC] Firebase save failed: {error_msg[0]}")
                 else:
-                    print(f"✅ [SYNC] Firebase save completed successfully")
+                    print(f"[OK] [SYNC] Firebase save completed successfully")
                     
             except Exception as e:
-                print(f"❌ [SYNC] Exception in Firebase save setup: {e}")
+                print(f"[FAIL] [SYNC] Exception in Firebase save setup: {e}")
                 import traceback
                 traceback.print_exc()
         else:
-            print(f"⚠️ [SYNC] Firebase not available, skipping Firebase save")
+            print(f"[WARN] [SYNC] Firebase not available, skipping Firebase save")
         
         # Always save to local file as backup
-        print(f"💾 [SYNC] Attempting to save to local file as backup...")
+        print(f" [SYNC] Attempting to save to local file as backup...")
         try:
             import os
             os.makedirs("data", exist_ok=True)
@@ -1540,13 +1540,13 @@ class ModelFamilyManager:
                     'model_config': providers_with_metadata,
                     'last_updated': datetime.now().isoformat()
                 }, f, indent=2)
-            print(f"✅ [SYNC] Successfully saved model config to local file")
+            print(f"[OK] [SYNC] Successfully saved model config to local file")
         except Exception as e:
-            print(f"❌ [SYNC] Failed to save model config to file: {e}")
+            print(f"[FAIL] [SYNC] Failed to save model config to file: {e}")
             import traceback
             traceback.print_exc()
         
-        print(f"🏁 [SYNC] _save_custom_models_sync completed")
+        print(f" [SYNC] _save_custom_models_sync completed")
     
     def _save_model_overrides(self):
         """Save modifications to default models using model_config structure"""
@@ -1607,7 +1607,7 @@ class ModelFamilyManager:
                                     'last_updated': datetime.now().isoformat()
                                 })
                             
-                            print(f"🐱 Saved model overrides to model_config: {sum(len(o) for o in overrides_by_provider.values())} models")
+                            print(f"[CAT] Saved model overrides to model_config: {sum(len(o) for o in overrides_by_provider.values())} models")
                         except Exception as e:
                             print(f"Failed to save model overrides to Firebase: {e}")
                     
@@ -1662,10 +1662,10 @@ class ModelFamilyManager:
                                                 setattr(model_info, field, value)
                                         
                                         override_count += 1
-                                        print(f"🔧 Applied model_config overrides to {model_id}")
+                                        print(f"[TOOL] Applied model_config overrides to {model_id}")
                         
                         if override_count > 0:
-                            print(f"🐱 Loaded {override_count} model overrides from model_config")
+                            print(f"[CAT] Loaded {override_count} model overrides from model_config")
                             return  # Successfully loaded from new structure
                     
                 except Exception as e:
@@ -1681,7 +1681,7 @@ class ModelFamilyManager:
                     override_data = config_ref.get()
                     if override_data and 'overrides' in override_data:
                         overrides = override_data['overrides']
-                        print(f"🐱 Loaded model overrides from legacy Firebase: {len(overrides)} models")
+                        print(f"[CAT] Loaded model overrides from legacy Firebase: {len(overrides)} models")
                 except Exception as e:
                     print(f"Failed to load legacy model overrides from Firebase: {e}")
             
@@ -1703,7 +1703,7 @@ class ModelFamilyManager:
                             overrides = override_data['overrides']
                         
                         if overrides:
-                            print(f"🐱 Loaded model overrides from file: {len(overrides)} models")
+                            print(f"[CAT] Loaded model overrides from file: {len(overrides)} models")
                 except Exception as e:
                     print(f"Failed to load model overrides from file: {e}")
             
@@ -1714,7 +1714,7 @@ class ModelFamilyManager:
                     for field, value in override_data.items():
                         if hasattr(model_info, field):
                             setattr(model_info, field, value)
-                    print(f"🔧 Applied legacy overrides to {model_id}")
+                    print(f"[TOOL] Applied legacy overrides to {model_id}")
                     
         except Exception as e:
             print(f"Failed to load model overrides: {e}")

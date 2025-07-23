@@ -1,5 +1,5 @@
 """
-🐱 Model Families Admin Interface
+[CAT] Model Families Admin Interface
 ================================
 
 Flask routes for managing model families through the admin interface.
@@ -110,7 +110,7 @@ def model_families_dashboard():
     
     dashboard_config = {
         'brand_name': 'NyanProxy',
-        'brand_emoji': '🐱',
+        'brand_emoji': '[CAT]',
         'new_system': True  # Flag to indicate new model config system
     }
     
@@ -148,7 +148,7 @@ def provider_details(provider_name: str):
     
     dashboard_config = {
         'brand_name': 'NyanProxy',
-        'brand_emoji': '🐱',
+        'brand_emoji': '[CAT]',
     }
     
     return render_template('admin/provider_models.html',
@@ -290,7 +290,7 @@ def usage_analytics():
     
     dashboard_config = {
         'brand_name': 'NyanProxy',
-        'brand_emoji': '🐱',
+        'brand_emoji': '[CAT]',
     }
     
     return render_template('admin/model_usage.html',
@@ -334,11 +334,11 @@ def add_custom_model():
         
         # Add the model
         auto_whitelist = data.get('auto_whitelist', True)
-        print(f"🔥 API: Attempting to add model {model_info.model_id} to provider {model_info.provider.value}")
+        print(f" API: Attempting to add model {model_info.model_id} to provider {model_info.provider.value}")
         
         try:
             success = model_manager.add_custom_model(model_info, auto_whitelist)
-            print(f"🔥 API: add_custom_model returned: {success}")
+            print(f" API: add_custom_model returned: {success}")
             
             if success:
                 # Log admin action asynchronously (non-blocking)
@@ -357,7 +357,7 @@ def add_custom_model():
                             admin_user='admin'
                         )
                     except Exception as log_error:
-                        print(f"⚠️ Logging error (non-critical): {log_error}")
+                        print(f"[WARN] Logging error (non-critical): {log_error}")
                 
                 log_thread = threading.Thread(target=background_log)
                 log_thread.daemon = True
@@ -369,15 +369,15 @@ def add_custom_model():
                     'model_id': model_info.model_id,
                     'whitelisted': auto_whitelist
                 }
-                print(f"✅ API: Returning success response: {response}")
+                print(f"[OK] API: Returning success response: {response}")
                 return jsonify(response)
             else:
                 error_response = {'error': 'Failed to add model (already exists or save failed)'}
-                print(f"❌ API: Returning error response: {error_response}")
+                print(f"[FAIL] API: Returning error response: {error_response}")
                 return jsonify(error_response), 400
         except Exception as add_error:
             error_response = {'error': f'Error adding model: {str(add_error)}'}
-            print(f"❌ API: Exception in add_custom_model: {add_error}")
+            print(f"[FAIL] API: Exception in add_custom_model: {add_error}")
             import traceback
             traceback.print_exc()
             return jsonify(error_response), 500
@@ -585,20 +585,20 @@ def get_model_configs():
             from ..services.model_families import AIProvider
             provider = AIProvider(provider_param.lower())
             provider_configs = model_manager.get_model_configs(provider)
-            print(f"🔍 Got configs for provider {provider_param}: {provider_configs}")
+            print(f"[SEARCH] Got configs for provider {provider_param}: {provider_configs}")
             # Wrap single provider result in the expected structure
             configs = {provider_param.lower(): provider_configs}
         else:
             configs = model_manager.get_model_configs()
-            print(f"🔍 Got all configs: {configs}")
+            print(f"[SEARCH] Got all configs: {configs}")
         
         # Add sanitized names for frontend URL usage
         enhanced_configs = {}
         for provider_key, provider_configs in configs.items():
-            print(f"🔍 Processing provider {provider_key} with {len(provider_configs)} configs")
+            print(f"[SEARCH] Processing provider {provider_key} with {len(provider_configs)} configs")
             enhanced_configs[provider_key] = {}
             for model_name, model_config in provider_configs.items():
-                print(f"🔍 Processing config {model_name}: {type(model_config)}")
+                print(f"[SEARCH] Processing config {model_name}: {type(model_config)}")
                 config_dict = model_config.to_dict() if hasattr(model_config, 'to_dict') else model_config
                 config_dict['sanitized_name'] = model_manager.sanitize_key(model_name)
                 enhanced_configs[provider_key][model_name] = config_dict
@@ -611,7 +611,7 @@ def get_model_configs():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"❌ Error in get_model_configs: {str(e)}")
+        print(f"[FAIL] Error in get_model_configs: {str(e)}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 @model_families_bp.route('/api/model-configs', methods=['POST'])
@@ -630,13 +630,13 @@ def create_model_config():
         
         from ..services.model_families import AIProvider, ModelConfig
         
-        print(f"🔍 Creating model config with data: {data}")
+        print(f"[SEARCH] Creating model config with data: {data}")
         provider = AIProvider(data['provider'].lower())
-        print(f"🔍 Provider enum: {provider}")
+        print(f"[SEARCH] Provider enum: {provider}")
         
         # Use display_name as the model_name (config identifier)
         model_name = data.get('model_name', data['display_name'])
-        print(f"🔍 Model name: {model_name}")
+        print(f"[SEARCH] Model name: {model_name}")
         
         model_config = ModelConfig(
             model_name=model_name,
@@ -656,9 +656,9 @@ def create_model_config():
             cat_personality=data.get('cat_personality', 'curious')
         )
         
-        print(f"🔍 Calling add_model_config with provider={provider}, model_name={model_name}")
+        print(f"[SEARCH] Calling add_model_config with provider={provider}, model_name={model_name}")
         success = model_manager.add_model_config(provider, model_name, model_config)
-        print(f"🔍 add_model_config returned: {success}")
+        print(f"[SEARCH] add_model_config returned: {success}")
         
         if success:
             structured_logger.log_user_action(

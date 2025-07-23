@@ -26,7 +26,7 @@ class IntegratedAPIManager:
     
     def __init__(self, firebase_db=None):
         """Initialize with the new AI Key Management System"""
-        print("🔄 Initializing Integrated API Manager...")
+        print("[RETRY] Initializing Integrated API Manager...")
         
         # Initialize the new AI Key Management System
         self.ai_key_manager = get_ai_key_manager(firebase_db)
@@ -41,7 +41,7 @@ class IntegratedAPIManager:
         self.key_health = {}
         self.lock = threading.Lock()
         
-        print("✅ Integrated API Manager ready")
+        print("[OK] Integrated API Manager ready")
     
     def _parse_keys(self, key_string: str) -> List[str]:
         """Parse comma and line-separated keys (legacy compatibility)"""
@@ -57,7 +57,7 @@ class IntegratedAPIManager:
     
     def _initialize_from_environment(self):
         """Initialize API keys from environment variables"""
-        print("🔧 Loading API keys from environment...")
+        print("[TOOL] Loading API keys from environment...")
         
         # OpenAI keys
         openai_keys = []
@@ -73,7 +73,7 @@ class IntegratedAPIManager:
         
         if openai_keys:
             result = self.ai_key_manager.initialize_provider_keys('openai', openai_keys)
-            print(f"✅ OpenAI: {result['healthy_keys_added']}/{result['total_keys_provided']} keys ready")
+            print(f"[OK] OpenAI: {result['healthy_keys_added']}/{result['total_keys_provided']} keys ready")
         
         # Anthropic keys
         anthropic_keys = []
@@ -87,7 +87,7 @@ class IntegratedAPIManager:
         
         if anthropic_keys:
             result = self.ai_key_manager.initialize_provider_keys('anthropic', anthropic_keys)
-            print(f"✅ Anthropic: {result['healthy_keys_added']}/{result['total_keys_provided']} keys ready")
+            print(f"[OK] Anthropic: {result['healthy_keys_added']}/{result['total_keys_provided']} keys ready")
         
         # Google keys
         google_keys = []
@@ -101,7 +101,7 @@ class IntegratedAPIManager:
         
         if google_keys:
             result = self.ai_key_manager.initialize_provider_keys('google', google_keys)
-            print(f"✅ Google: {result['healthy_keys_added']}/{result['total_keys_provided']} keys ready")
+            print(f"[OK] Google: {result['healthy_keys_added']}/{result['total_keys_provided']} keys ready")
     
     def get_api_key(self, service: str) -> Optional[str]:
         """Get a healthy API key for the service (legacy compatibility)"""
@@ -114,7 +114,7 @@ class IntegratedAPIManager:
         Handle API error with the new system
         Returns True if should retry with different key
         """
-        print(f"🔴 API Error for {service}: {status_code} - {error_message}")
+        print(f"[RED] API Error for {service}: {status_code} - {error_message}")
         
         # Classify the error using the new system
         retry_system = self.ai_key_manager.retry_system
@@ -134,7 +134,7 @@ class IntegratedAPIManager:
             error_message=error_message
         )
         
-        print(f"🔍 Error classified as: {error_status}, should_retry: {should_retry}")
+        print(f"[SEARCH] Error classified as: {error_status}, should_retry: {should_retry}")
         return should_retry
     
     def update_key_health(self, key: str, success: bool, status_code: int = None, error_message: str = None):
